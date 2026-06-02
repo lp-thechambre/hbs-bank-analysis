@@ -1,0 +1,66 @@
+{
+  "screen_run": {
+    "id": "screen-YYYY-MM-DD-NNN",
+    "timestamp": "YYYY-MM-DDTHH:MM:SS+08:00",
+    "data_source": "eastmoney_f10_api",
+    "data_as_of": "YYYYQN",
+    "data_directory": "data/YYYY-MM-DD/",
+    "total_banks": 42,
+    "layers_completed": ["data_engineering", "quant", "edge", "qualitative", "synthesis"],
+    "final_candidates": 12,
+    "pipeline_version": "v1"
+  },
+  "candidates": [
+    {
+      "code": "SH601398",
+      "name": "工商银行",
+      "type": "traditional_commercial",
+      "score": 82.5,
+      "rank": 1,
+      "dimension_scores": {
+        "D1_capital_preservation": 88.0,
+        "D2_asset_quality": 80.0,
+        "D3_profitability": 75.0,
+        "D4_growth": 70.0,
+        "D5_valuation": 90.0
+      },
+      "flags": [],
+      "reasons": "HIGH_CONFIDENCE_PASS: unanimous across all layers. Strong capital position and valuation safety margin.",
+      "source_tracking": {
+        "quant": {
+          "status": "PASS",
+          "confidence": "high",
+          "curiosity": "Consistent across all metrics, strong capital position"
+        },
+        "edge": [],
+        "qual": [
+          {
+            "group": "large_state_owned",
+            "assessment": "PASS",
+            "group_rank": 1
+          }
+        ],
+        "override": null
+      },
+      "data_quality": {
+        "completeness": 0.91,
+        "missing_fields": ["NET_INTEREST_MARGIN"],
+        "confidence": "high"
+      }
+    }
+  ],
+  "rejected": [
+    {
+      "code": "SH600015",
+      "name": "华夏银行",
+      "layer": "quant",
+      "reason": "NPL 3.2% exceeds hard threshold of 3.0%. PCR 135% in caution zone.",
+      "dimension": "D2_asset_quality"
+    }
+  ],
+  "analyst_notes": "Example output template (ARCHITECTURE-v1). 8 HIGH_CONFIDENCE_PASS, 12 CONFLICT (resolved: 4 included, 8 excluded), 22 UNANIMOUS_REJECT.",
+  "warnings": [
+    "NIM data missing for 12 banks (Q1 reports)"
+  ],
+  "errors": []
+}
