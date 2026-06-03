@@ -3,8 +3,8 @@
 Generate embeddings and cluster report for bank cards.
 
 ARCHITECTURE-v1 Embedding Layer.
-Calls Qwen3-Embedding-0.6B (localhost:8000/v1/embeddings) to vectorize
-bank cards, then clusters them and outputs cluster_report.json.
+Calls an OpenAI-compatible embedding API to vectorize bank cards,
+then clusters them and outputs cluster_report.json.
 
 Graceful degradation:
   - Embedding API unavailable -> empty cluster report with error flag
@@ -12,7 +12,7 @@ Graceful degradation:
 
 Usage:
   python3 generate_embeddings.py --data-dir data/2026-06-02
-  python3 generate_embeddings.py --data-dir data/2026-06-02 --embedding-url http://localhost:8000/v1/embeddings
+  python3 generate_embeddings.py --data-dir data/2026-06-02 --embedding-url http://localhost:8000/v1/embeddings --model text-embedding-3-small
   python3 generate_embeddings.py --data-dir data/2026-06-02 --n-clusters 4
 """
 
@@ -41,7 +41,7 @@ MAX_RETRIES = 2
 # ============================================================
 
 def fetch_embeddings(texts, api_url, model=EMBEDDING_MODEL):
-    """Fetch embeddings from the Qwen3-Embedding API.
+    """Fetch embeddings from an OpenAI-compatible embedding API.
 
     Returns list of embedding vectors (list of floats), or None on failure.
     """
@@ -272,6 +272,8 @@ def main():
                         help=f"Embedding API URL (default: {EMBEDDING_API_URL})")
     parser.add_argument("--n-clusters", type=int, default=DEFAULT_N_CLUSTERS,
                         help=f"Number of clusters (default: {DEFAULT_N_CLUSTERS})")
+    parser.add_argument("--model", default=EMBEDDING_MODEL,
+                        help=f"Embedding model name (default: {EMBEDDING_MODEL})")
     parser.add_argument("--skip-embedding", action="store_true",
                         help="Skip embedding API call (use mock embeddings for testing)")
     args = parser.parse_args()
@@ -317,13 +319,13 @@ def main():
             norm = math.sqrt(sum(v * v for v in vec))
             embeddings.append([v / norm for v in vec])
     else:
-        print(f"Fetching embeddings from {args.embedding_url}...", file=sys.stderr)
-        embeddings = fetch_embeddings(texts, args.embedding_url)
+        print(f"Fetching embeddings from {args.embedding_url} (model={args.model})...", file=sys.stderr)
+        embeddings = fetch_embeddings(texts, args.embedding_url, model=args.model)
 
     if embeddings is None:
         print("Embedding API unavailable. Generating empty cluster report.", file=sys.stderr)
         report = {
-            "embedding_model": EMBEDDING_MODEL,
+            "embedding_model": args.model,
             "embedding_api": args.embedding_url,
             "status": "error",
             "error": "Embedding API unavailable",
@@ -356,7 +358,7 @@ def main():
         outliers = find_outliers(embeddings, labels, codes)
 
         report = {
-            "embedding_model": EMBEDDING_MODEL,
+            "embedding_model": args.model,
             "embedding_api": args.embedding_url,
             "status": "success",
             "clustering_method": "KMeans (cosine distance)",

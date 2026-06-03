@@ -15,7 +15,7 @@ or
 screen banks
 ```
 
-The skill runs a **4-layer AI spawn pipeline** using Eastmoney F10 financial data and Qwen3-Embedding-0.6B clustering.
+The skill runs a **4-layer AI spawn pipeline** using Eastmoney F10 financial data and optional embedding-based clustering.
 
 ## Pipeline (ARCHITECTURE-v1)
 
@@ -46,14 +46,41 @@ Layer 3: Synthesis (AI judge spawn)
 - **Layer 2**: 3-4 parallel AI spawns doing horizontal comparison within bank type groups
 - **Layer 3**: One synthesis spawn acting as judge — cross-referencing all markers, resolving conflicts, selecting 10-15 final candidates
 
-**Embedding integration**: Qwen3-Embedding-0.6B (local oMLX at localhost:8000) generates vector embeddings for all 42 bank cards. KMeans clustering identifies peer groups and outliers. Pipeline degrades gracefully if the embedding API is unavailable.
+**Embedding integration**: Uses any OpenAI-compatible embedding API (default: `text-embedding-3-small`). Configurable via `EMBEDDING_API_URL` and `EMBEDDING_MODEL` environment variables, or `--embedding-url` / `--model` CLI flags. KMeans clustering identifies peer groups and outliers. Pipeline degrades gracefully if the embedding API is unavailable.
 
 ## Requirements
 
 - Python 3.12+
 - `requests` package
 - Optional: `akshare` (fallback for stock prices)
-- Optional: local Qwen3-Embedding-0.6B for clustering (pipeline runs without it)
+- Optional: an OpenAI-compatible embedding API for clustering (pipeline runs without it)
+
+## Configuration
+
+Embedding is optional and fully configurable. The pipeline works with any embedding service that speaks the OpenAI `/v1/embeddings` protocol — including OpenClaw, local Ollama/vLLM/oMLX deployments, or cloud APIs.
+
+| Method | Variable / Flag | Default |
+|--------|----------------|---------|
+| Environment | `EMBEDDING_API_URL` | `http://localhost:8000/v1/embeddings` |
+| Environment | `EMBEDDING_MODEL` | `text-embedding-3-small` |
+| CLI | `--embedding-url` | (same) |
+| CLI | `--model` | (same) |
+
+**Examples:**
+```bash
+# OpenClaw with Qwen3 local
+export EMBEDDING_API_URL=http://localhost:8000/v1/embeddings
+export EMBEDDING_MODEL=Qwen3-Embedding-0.6B
+
+# OpenAI API
+export EMBEDDING_API_URL=https://api.openai.com/v1/embeddings
+export EMBEDDING_MODEL=text-embedding-3-small
+
+# Or via CLI
+python3 generate_embeddings.py --data-dir data/2026-06-02 \
+  --embedding-url https://api.openai.com/v1/embeddings \
+  --model text-embedding-3-small
+```
 
 ## Scoring Dimensions
 

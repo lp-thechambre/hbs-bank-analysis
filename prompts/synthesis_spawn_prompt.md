@@ -242,7 +242,7 @@ Use the following template structure exactly:
 ## 方法论备注
 
 - 评分方法: 同类型银行分位数映射（5 维度加权）
-- 聚类方法: Qwen3-Embedding-0.6B (KMeans, cosine distance)
+- 聚类方法: Embedding-based KMeans (cosine distance)
 - 标记来源: Layer 1 定量 (quant_markers.json) + 边缘信号 (edge_markers.json) + Layer 2 定性 (qual_markers_*.json)
 - 冲突裁决: ARCHITECTURE-v1 §3.5 裁判模式（Pattern A/B/C/D）
 - 免责声明: 本报告仅供研究参考，不构成投资建议。

@@ -253,8 +253,16 @@ INDEX_COLUMNS = ["code", "name", "type", "pb", "roe", "npl", "car", "nim", "mcap
 # Embedding Configuration (ARCHITECTURE-v1 §4)
 # ============================================================
 
-EMBEDDING_API_URL = "http://localhost:8000/v1/embeddings"
-EMBEDDING_MODEL = "Qwen3-Embedding-0.6B"
+import os
+
+EMBEDDING_API_URL = os.environ.get(
+    "EMBEDDING_API_URL",
+    "http://localhost:8000/v1/embeddings",
+)
+EMBEDDING_MODEL = os.environ.get(
+    "EMBEDDING_MODEL",
+    "text-embedding-3-small",
+)
 DEFAULT_N_CLUSTERS = 4
 
 # ============================================================
