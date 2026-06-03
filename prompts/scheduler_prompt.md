@@ -47,52 +47,9 @@ data/
 
 ## Bank Universe (42 A-Share Banks)
 
-These codes are needed for constructing API URLs. SH prefix = Shanghai, SZ prefix = Shenzhen.
+The full bank list with codes, names, and type overrides is in `references/bank_list.md`. Read that file when you need bank codes for API URL construction.
 
-```
-SH601398 工商银行
-SH601939 建设银行
-SH601288 农业银行
-SH601988 中国银行
-SH601328 交通银行
-SH601658 邮储银行
-SH600036 招商银行
-SH601166 兴业银行
-SH600016 民生银行
-SH600000 浦发银行
-SH601818 光大银行
-SH600015 华夏银行
-SZ000001 平安银行
-SH601998 中信银行
-SH601916 浙商银行
-SZ002142 宁波银行
-SH601009 南京银行
-SH601229 上海银行
-SH600926 杭州银行
-SH601838 成都银行
-SH601997 贵阳银行
-SH601169 北京银行
-SH601577 长沙银行
-SH601963 重庆银行
-SH601528 瑞丰银行
-SH601860 紫金银行
-SH601187 厦门银行
-SH601825 沪农商行
-SH601665 齐鲁银行
-SH601128 常熟银行
-SH601077 渝农商行
-SH600908 无锡银行
-SH603323 苏农银行
-SZ002839 张家港行
-SZ002807 江阴银行
-SZ002958 青农商行
-SH600928 西安银行
-SH600919 江苏银行
-SZ002936 郑州银行
-SZ002948 青岛银行
-SZ001227 兰州银行
-SZ002966 苏州银行
-```
+SH prefix = Shanghai, SZ prefix = Shenzhen. 42 banks total across 4 groups: large state-owned (6), joint-stock (9), city commercial (17), rural commercial (10).
 
 ## Execution Steps
 

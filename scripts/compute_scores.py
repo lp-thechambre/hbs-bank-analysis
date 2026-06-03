@@ -325,8 +325,8 @@ def _score_single_bank(bank, stats, bank_type, prices_dict, dividend_data):
 
     # ---- D2: Asset Quality (25%) ----
     d2_npl = _linear_score(npl, stats.get("NONPERLOAN"), reverse=True) if npl is not None else None
-    d2_pcr = min(100, pcr / 3.0) if pcr is not None else None
-    d2_lpr = min(100, loan_prov * 20) if loan_prov is not None else None
+    d2_pcr = _linear_score(pcr, stats.get("BLDKBBL")) if pcr is not None and stats.get("BLDKBBL") else None
+    d2_lpr = _linear_score(loan_prov, stats.get("LOAN_PROVISION_RATIO")) if loan_prov is not None and stats.get("LOAN_PROVISION_RATIO") else None
 
     d2_sub = [(s, w) for s, w in [(d2_npl, 0.55), (d2_pcr, 0.30), (d2_lpr, 0.15)] if s is not None]
     d2 = sum(s * w for s, w in d2_sub) / sum(w for _, w in d2_sub) if d2_sub else None
@@ -362,11 +362,10 @@ def _score_single_bank(bank, stats, bank_type, prices_dict, dividend_data):
         d3 = None
 
     # ---- D4: Growth (15%) ----
-    d4 = 50  # Neutral; growth requires multi-period data
-    # Growth scoring requires prior-year comparison not in single-period API fetch.
-    # Placeholder: use asset-size-relative score as rough proxy.
-    if total_assets is not None and stats.get("TOTAL_ASSETS_PK"):
-        d4 = _linear_score(total_assets, stats["TOTAL_ASSETS_PK"])
+    # Growth scoring requires multi-period (YoY) data not available in single-period API fetch.
+    # Use asset-size-relative score as a structural proxy — larger banks tend to have more
+    # stable growth profiles. This is a known limitation; multi-period data would replace this.
+    d4 = _linear_score(total_assets, stats["TOTAL_ASSETS_PK"]) if total_assets is not None and stats.get("TOTAL_ASSETS_PK") else 50
 
     # ---- D5: Valuation (15%) ----
     d5_pb = _score_pb(code, bps, prices_dict, stats) if bps is not None else None
@@ -418,16 +417,30 @@ def _score_single_bank(bank, stats, bank_type, prices_dict, dividend_data):
 
 
 def _estimate_rorwa_score(net_profit, total_assets, stats):
-    """Estimate RORWA from total assets (RWA ≈ total_assets * 0.65)."""
+    """Estimate RORWA from total assets (RWA ≈ total_assets * 0.65 for Chinese banks)."""
     if net_profit is None or total_assets is None or total_assets == 0:
         return None
     rorwa = net_profit / (total_assets * 0.65)
-    # Use ROE peer stats as rough percentile benchmark for RORWA
-    roe_vals = []
-    if stats.get("ROEJQ"):
-        # RORWA is typically smaller than ROE; map to similar percentile space
-        pass
-    return 50  # Neutral placeholder; actual peer comparison needs RWA data
+    # Convert to percentage for peer comparison
+    rorwa_pct = rorwa * 100
+    # Collect peer RORWA estimates within the same group for percentile mapping
+    # Using available data: we have stats for ROEJQ as a correlated benchmark
+    # Map RORWA to 0-100 scale based on typical Chinese bank range (0.5% - 1.5%)
+    rorwa_p25 = 0.5
+    rorwa_p75 = 1.5
+    if rorwa_pct <= 0:
+        return 10
+    if rorwa_pct <= rorwa_p25:
+        return 25
+    if rorwa_pct <= 0.8:
+        return 40
+    if rorwa_pct <= 1.0:
+        return 55
+    if rorwa_pct <= rorwa_p75:
+        return 75
+    if rorwa_pct <= 2.0:
+        return 90
+    return 100
 
 
 def _score_pb(code, bps, prices_dict, stats):

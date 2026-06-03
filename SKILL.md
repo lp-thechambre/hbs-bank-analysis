@@ -55,14 +55,25 @@ The main session MUST NOT receive any financial data, bank names, or analysis re
 
 All data lives in `data/YYYY-MM-DD/`. Layer outputs are written to disk as JSON/markdown files. Spawns receive file paths, not data. This is the contract that enables small-context models to participate.
 
-### 3. Four-Layer Spawn Topology
+### 3. Single Scheduler Entry Point
+
+The main session MUST NOT launch quant, edge, qual, or synthesis spawns directly. The main session spawns exactly ONE scheduler agent. ALL other spawns (quant, edge, qual, synthesis) MUST be launched BY the scheduler, not by the main session.
+
+The main session's only roles are:
+- Launch the single scheduler spawn
+- Display progress notifications from the scheduler
+- Show final metadata summary to the user
+
+This constraint prevents task fan-out to multiple main sessions. The scheduler is the sole orchestrator.
+
+### 4. Four-Layer Spawn Topology
 
 Layers cannot be skipped or merged. The topology is:
 - Scheduler → [Quant || Edge] → Qualitative (3-4 parallel) → Synthesis
 - Each spawn runs in isolation with its own prompt from `prompts/`
 - All spawns must have allowed-tools: Read, Write
 
-### 4. Synthesis as Judge, Not Scorer
+### 5. Synthesis as Judge, Not Scorer
 
 The synthesis spawn does NOT re-score banks. It reads all upstream markers, classifies into consensus/conflict groups, resolves only conflicts, and selects final candidates. Scores come from the data engineering layer's bank cards.
 
@@ -135,15 +146,15 @@ mkdir -p "$DATA_DIR/cards"
 - No API keys or authentication required
 - Eastmoney public APIs (parameters auto-discovered by AI via `web_fetch`)
 
-### Step 2: Launch Scheduler Spawn
+### Step 2: Launch Scheduler Spawn (ONLY ACTION)
 
-The main session spawns a **scheduler agent** that runs the full 4-layer pipeline.
+The main session spawns exactly **ONE scheduler agent** that runs the full 4-layer pipeline. This is the ONLY spawn the main session ever makes for this skill. Do NOT spawn quant, edge, qual, or synthesis agents directly — the scheduler handles all of them internally.
 
 Load the scheduler prompt from `prompts/scheduler_prompt.md` and pass:
 - `{data_dir}`: the data directory path
 - Allowed tools: exec, Read, Write, web_fetch, sessions_spawn
 
-The scheduler handles everything: running data engineering scripts, spawning analysis layers, collecting results.
+The scheduler handles everything: running data engineering scripts, spawning analysis layers, collecting results. The main session does nothing else until the scheduler reports completion.
 
 ### Step 3: Set Timeout Watchdog (Optional)
 
