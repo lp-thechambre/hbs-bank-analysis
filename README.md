@@ -1,12 +1,12 @@
 # HBS-Screen: A-Share Bank Stock Screening Skill
 
-An [OpenClaw](https://github.com/anthropics/claude-code) Skill that screens 42 A-share listed banks into 10-15 candidates for depth analysis.
+An [OpenClaw](https://github.com/openclaw/openclaw) Skill that screens 42 A-share listed banks into 10-15 candidates for depth analysis.
 
 Part of the **Hermes Banking Stock (HBS)** research framework.
 
 ## Quick Start
 
-Invoke in Openclaw or Claude Code:
+Invoke in OpenClaw:
 ```
 跑一下银行初筛
 ```
@@ -125,6 +125,10 @@ Apache 2.0 — see [LICENSE](LICENSE).
 ## Disclaimer
 
 This skill is for research and educational purposes only. It does NOT constitute investment advice. Past screening results do not guarantee future performance. All investment decisions should be made in consultation with qualified financial professionals.
+
+## Acknowledgments
+
+Built with [Claude Code](https://github.com/anthropics/claude-code) and DeepSeek v4 Pro.
 
 ## Related
 
