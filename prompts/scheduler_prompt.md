@@ -224,19 +224,52 @@ Repeat for ALL 42 banks. Verify:
 
 ### Completion
 
-Read `{data_dir}/final_output.json` and `{data_dir}/screening_report.md` to extract metadata only:
+Read `{data_dir}/final_output.json` to extract:
+
+**Run metadata:**
 - Total banks screened
 - Final candidate count
-- Top 3 candidate codes and names
 - Pipeline duration
 - Output file paths
+
+**Tier summary (from `all_banks_summary`):**
+- Read the full `all_banks_summary` array from final_output.json
+- Count banks in each tier: green, yellow, red
+- Format a summary notification and send to the main session
 
 Verify all three deliverable files exist:
 - `{data_dir}/final_output.json`
 - `{data_dir}/screening_report.md`
 - `{data_dir}/analysis_trail.md`
 
-Report this metadata to the main session. **Do NOT include any financial data or full bank lists in the notification.**
+**Report the following to the main session** — tier labels are metadata, NOT financial data. OK to include:
+
+```
+HBS 银行股初筛完成 (ARCHITECTURE-v1).
+
+🟢 绿色 (强烈推荐深度分析): {G} 家
+  {银行1} ({code1}) — {brief_reason1}
+  {银行2} ({code2}) — {brief_reason2}
+  ...
+
+🟡 黄色 (可考虑): {Y} 家
+  {银行1} ({code1}) — {brief_reason1}
+  ...
+
+🔴 红色 (不建议): {R} 家
+  {银行1} ({code1}) — {brief_reason1}
+  ...
+
+数据目录: data/YYYY-MM-DD/
+完成层级: 4/4
+耗时: {T} 秒
+
+详细报告: data/YYYY-MM-DD/screening_report.md
+```
+
+- Show ALL banks in each tier (not just top N). The tier summary IS the main deliverable for user decision-making.
+- Do NOT include financial metrics (scores, NPL, CET1, etc.) — only tier, name, code, and brief_reason.
+- Ask the user: "请确认分级结果，或指定需要调整的银行。是否进入深度分析阶段？"
 
 ## Timeout Management
 

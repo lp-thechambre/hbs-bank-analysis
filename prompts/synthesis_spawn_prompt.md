@@ -94,7 +94,44 @@ If fewer than 10:
 - Or include CONFLICT banks you were leaning against
 - Flag these as "borderline inclusion" in reasons
 
-### Step 5: Add Source Tracking
+### Step 5: Assign Green / Yellow / Red Tiers (All 42 Banks)
+
+Classify EVERY bank into one of three user-facing tiers. This tier drives the main session summary and the user's next action.
+
+**GREEN (强烈推荐)**: Enter depth analysis with high confidence.
+- Criteria: HIGH_CONFIDENCE_PASS consensus, or CONFLICT resolved PASS. Score typically in top third of peer group. No unresolved edge anomalies of high severity. Data quality confidence high or medium.
+- Expected: 8-15 banks.
+
+**YELLOW (可考虑)**: Borderline — can enter depth analysis but with noted caveats.
+- Criteria: CONFLICT resolved to borderline inclusion. Or banks just below the score cutoff but with interesting qualitative signals. WATCH-level flags present but no hard REJECT. Data quality may be medium or low.
+- Expected: 5-12 banks.
+
+**RED (不建议)**: Not recommended for depth analysis in this cycle.
+- Criteria: UNANIMOUS_REJECT. Hard threshold violation at any layer (NPL > 3%, CET1 < 8.5%, negative profit). Multiple WATCH flags without mitigating qual assessment. Severe edge anomalies. Data quality critically low.
+- Expected: 15-25 banks.
+
+**Tier assignment rules:**
+- A bank can only be GREEN if it was selected as a final candidate AND had no REJECT at any layer.
+- A YELLOW bank may or may not be in the candidate list — it signals "interesting but not clean."
+- A RED bank must have a concrete, citeable rejection reason (not just "score too low").
+- If a bank's data quality is "low", it cannot be GREEN.
+
+### Step 6: Build All-Banks Summary
+
+Compile a summary array with all 42 banks for the main session:
+
+```json
+"all_banks_summary": [
+  {"code": "SH601398", "name": "工商银行", "tier": "green", "score": 78.5, "brief_reason": "All layers PASS, strong capital + low NPL"},
+  {"code": "SH601528", "name": "瑞丰银行", "tier": "yellow", "score": 55.2, "brief_reason": "Quant WATCH on NIM, qual PASS — mixed signal on margins"},
+  {"code": "SH600015", "name": "华夏银行", "tier": "red", "score": null, "brief_reason": "UNANIMOUS_REJECT: NPL 3.2% exceeds hard threshold"}
+]
+```
+
+- `score` is null for RED banks that were rejected before scoring.
+- `brief_reason` max 60 characters. Must cite the specific reason (threshold, flag, or consensus).
+
+### Step 7: Add Source Tracking
 
 For each final candidate, record which upstream markers support the inclusion:
 
@@ -109,7 +146,7 @@ For each final candidate, record which upstream markers support the inclusion:
 
 If you overrode a marker (e.g., qual said WATCH but you decided PASS), note it in `override`.
 
-### Step 6: Generate Screening Report
+### Step 8: Generate Screening Report
 
 After writing `final_output.json`, generate a human-readable screening report. This is the **primary deliverable** for the analyst — it must be self-contained and readable without referring to raw JSON.
 
@@ -145,6 +182,32 @@ Use the following template structure exactly:
 对每家候选银行，附一段分析摘要（2-4 句话）：
 - **{银行名称} ({代码})** — {为什么入选}. 得分 {score}, 排名 {rank}/{total}.
   亮点: {最强的 1-2 个维度}. 关注点: {flags 中 WATCH 级别的简述}. 来源: {consensus group}.
+
+## 分级总览（全部 42 家银行）
+
+| 分级 | 数量 | 含义 |
+|------|------|------|
+| 🟢 绿色 | {G} | 强烈推荐进入深度分析 |
+| 🟡 黄色 | {Y} | 可考虑，但有关注点 |
+| 🔴 红色 | {R} | 不建议进入下一轮 |
+
+### 🟢 绿色（{G} 家）
+| # | 名称 | 得分 | 入选理由 |
+|---|------|------|----------|
+| 1 | 工商银行 | 78.5 | 全层级 PASS，资本充裕+NPL低 |
+| ... | ... | ... | ... |
+
+### 🟡 黄色（{Y} 家）
+| # | 名称 | 得分 | 关注点 |
+|---|------|------|--------|
+| 1 | 瑞丰银行 | 55.2 | NIM 承压，定性评估待确认 |
+| ... | ... | ... | ... |
+
+### 🔴 红色（{R} 家）
+| # | 名称 | 淘汰原因 |
+|---|------|----------|
+| 1 | 华夏银行 | NPL 3.2% 超过硬阈值 |
+| ... | ... | ... |
 
 ## 候选银行详情
 
@@ -204,8 +267,8 @@ Use the following template structure exactly:
 
 You produce TWO files:
 
-1. `{data_dir}/final_output.json` — Machine-readable JSON (format per `assets/output_schema.json`)
-2. `{data_dir}/screening_report.md` — Human-readable Markdown report (format per template above)
+1. `{data_dir}/final_output.json` — Machine-readable JSON (format per `assets/output_schema.json`). Must include `all_banks_summary` with tier classification for all 42 banks.
+2. `{data_dir}/screening_report.md` — Human-readable Markdown report (format per template above). Must include the 分级总览 section.
 
 Both must be written atomically (temp file then rename).
 
@@ -220,4 +283,6 @@ Both must be written atomically (temp file then rename).
 - Write ALL files atomically (temp file then rename).
 - The report is a DELIVERABLE. It must be complete and self-contained. An analyst should be able to read it without looking at any JSON.
 - All file paths must be under `{data_dir}/`. Never write outside this directory.
+- Every bank must receive exactly one tier (green/yellow/red). No bank left unclassified.
+- A bank cannot be GREEN if it has a REJECT at any layer or data quality "low".
 - If uncertain about a conflict resolution, default to the qual assessment (qual analysts had full card context and peer comparison).

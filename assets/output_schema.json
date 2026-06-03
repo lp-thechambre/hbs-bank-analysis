@@ -35,6 +35,7 @@
           "type": { "type": "string", "enum": ["traditional_commercial", "integrated", "trading_ib"] },
           "score": { "type": "number", "minimum": 0, "maximum": 100 },
           "rank": { "type": "integer", "minimum": 1 },
+          "tier": { "type": "string", "enum": ["green", "yellow", "red"], "description": "绿=强烈推荐深度分析, 黄=可考虑, 红=不建议进入下轮" },
           "dimension_scores": {
             "type": "object",
             "properties": {
@@ -108,6 +109,7 @@
         "properties": {
           "code": { "type": "string" },
           "name": { "type": "string" },
+          "tier": { "type": "string", "enum": ["green", "yellow", "red"] },
           "layer": { "type": "string", "description": "Which layer rejected this bank" },
           "reason": { "type": "string" },
           "dimension": { "type": "string" }
@@ -115,6 +117,21 @@
       }
     },
     "analyst_notes": { "type": "string", "description": "Synthesis analyst notes" },
+    "all_banks_summary": {
+      "type": "array",
+      "description": "All 42 banks with tier classification for main session summary display",
+      "items": {
+        "type": "object",
+        "required": ["code", "name", "tier"],
+        "properties": {
+          "code": { "type": "string" },
+          "name": { "type": "string" },
+          "tier": { "type": "string", "enum": ["green", "yellow", "red"] },
+          "score": { "type": ["number", "null"] },
+          "brief_reason": { "type": "string", "description": "One-line reason for tier assignment" }
+        }
+      }
+    },
     "warnings": { "type": "array", "items": { "type": "string" } },
     "errors": { "type": "array", "items": { "type": "string" } }
   }

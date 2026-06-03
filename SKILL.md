@@ -178,26 +178,34 @@ Layer 3 complete: final_output.json ready, 12 candidates selected
 
 ### Step 5: Display Results (Main Session)
 
-Show only metadata summary to the user:
+The scheduler sends a tier summary notification. Display it to the user:
 
 ```
-Bank screening complete (ARCHITECTURE-v1).
-  Data directory: data/YYYY-MM-DD/
-  Banks screened: 42
-  Layers completed: 4/4
-  Final candidates: 12
+HBS 银行股初筛完成 (ARCHITECTURE-v1).
 
-  Top 3:
-    1. 工商银行 (SH601398) — score: 78.5
-    2. 建设银行 (SH601939) — score: 76.2
-    3. 招商银行 (SH600036) — score: 75.0
+🟢 绿色 (强烈推荐深度分析): 12 家
+  工商银行 (SH601398) — 全层级 PASS，资本充裕+NPL低
+  建设银行 (SH601939) — 全层级 PASS，资产质量优异
+  ...
 
-  Deliverables:
-    - Report: data/YYYY-MM-DD/screening_report.md
-    - Audit trail: data/YYYY-MM-DD/analysis_trail.md
-    - Machine output: data/YYYY-MM-DD/final_output.json
-  Duration: {T} seconds
+🟡 黄色 (可考虑): 8 家
+  瑞丰银行 (SH601528) — NIM 承压，定性评估待确认
+  ...
+
+🔴 红色 (不建议): 22 家
+  华夏银行 (SH600015) — NPL 3.2% 超过硬阈值
+  ...
+
+数据目录: data/YYYY-MM-DD/
+完成层级: 4/4
+耗时: {T} 秒
+
+详细报告: data/YYYY-MM-DD/screening_report.md
 ```
+
+The scheduler asks: "请确认分级结果，或指定需要调整的银行。是否进入深度分析阶段？"
+
+The main session then waits for the user's next instruction — confirm tiers, override specific banks, or proceed to depth analysis.
 
 ## Fallback Strategy
 
