@@ -6,7 +6,7 @@ Part of the **Hermes Banking Stock (HBS)** research framework.
 
 ## Quick Start
 
-Invoke in Claude Code:
+Invoke in Openclaw or Claude Code:
 ```
 跑一下银行初筛
 ```
