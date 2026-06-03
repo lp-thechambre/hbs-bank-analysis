@@ -2,7 +2,7 @@
 
 An [OpenClaw](https://github.com/openclaw/openclaw) Skill that screens 42 A-share listed banks into 10-15 candidates for depth analysis.
 
-Part of the **Hermes Banking Stock (HBS)** research framework.
+Part of the **Homebrew Strategy (HBS)** research framework.
 
 ## Quick Start
 

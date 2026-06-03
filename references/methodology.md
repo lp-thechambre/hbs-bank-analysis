@@ -1,6 +1,6 @@
 # Methodology References — HBS-Screen v0.4
 
-> Points to relevant HBS (Hermes Banking Stock) methodology chapters.
+> Points to relevant HBS (Homebrew Strategy) methodology chapters.
 > For use with downstream Depth, Voh, and Reperio skills.
 
 ## HBS v0.3 Framework
