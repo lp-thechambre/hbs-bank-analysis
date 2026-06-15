@@ -1,5 +1,9 @@
 # CLAUDE.md
 
+## Git Rules
+
+NEVER add `Co-Authored-By` or any AI attribution trailer to commit messages. The sole author is the human user.
+
 ## Project
 
 HBS-Bank-Depth — Layer 2 of the Homebrew Strategy investment research system. Performs deep analysis on A-share listed banks via a 5-layer AI spawn pipeline (L0→L1→L2→L3→L5a→L5b), producing five-level ratings (STRONG_BUY/BUY/HOLD/SELL/STRONG_SELL), VOH scores, and per-bank depth reports. Covers all 23 chapters of the HBS methodology v0.3.
