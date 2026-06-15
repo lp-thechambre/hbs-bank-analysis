@@ -117,6 +117,44 @@ Do NOT:
 - Use values from a different time period than the one requested
 - Skip metrics because they "seem wrong" — extract what's there, flag it if concerned
 
+### Unit Rules (MANDATORY)
+
+**CRITICAL**: L0c (structurize) already normalized all monetary values to 百万元 in `structured.md`. You MUST read Section G2 of structured.md to verify normalization status — do NOT blindly re-apply conversion factors.
+
+#### Two mutually exclusive unit types
+
+| Type | `unit` value | Examples | Requires normalization? |
+|------|-------------|----------|------------------------|
+| Monetary (金额) | `"百万元"` | total_assets, net_profit, operating_income, rwa_total | Already done by L0c — verify via G2, do NOT re-convert |
+| Ratio (比率/百分比) | `"%"` | cet1_ratio, npl_ratio, nim, roe, roa, total_car, lcr, nsfr, provision_coverage, cost_income_ratio, leverage_ratio, eps, bvps | Never — these are percentages, not monetary |
+
+**Check before extracting**:
+1. Is this metric a monetary amount or a ratio?
+2. If monetary → `"unit": "百万元"`, verify G2 status is ✅ for that section
+3. If ratio → `"unit": "%"`, value is as-disclosed (no conversion)
+4. Record original unit in `_unit_note` ONLY for monetary metrics where the original report used a different unit
+
+**Double-normalization guard**: If structured.md G2 shows ✅ for a section, values from that section are already in 百万元. Applying another division/conversion is a HARD ERROR. If G2 shows ⚠️, do NOT extract from that section — mark confidence "low" and note the warning.
+
+**Common mistake — monetary vs ratio confusion**:
+- `cet1_ratio` is a ratio → `"unit": "%"`, e.g. `"value": 12.5, "unit": "%"`
+- `npl_ratio` is a ratio → `"unit": "%"`, e.g. `"value": 1.35, "unit": "%"`
+- `total_assets` is monetary → `"unit": "百万元"`, e.g. `"value": 53477773.0, "unit": "百万元"`
+- `net_profit` is monetary → `"unit": "百万元"`, e.g. `"value": 1580.3, "unit": "百万元"`
+
+#### Monetary metrics (use `"unit": "百万元"`)
+total_assets, total_loans, total_deposits, total_liabilities, operating_income,
+net_interest_income, net_fee_income, operating_profit, net_profit, net_profit_parent,
+credit_rwa, market_rwa, operational_rwa, rwa_total, tier1_capital, total_capital,
+cet1_net_reported, npl_balance, provision_balance, sml_balance,
+interest_income, interest_expense, fee_income, fee_expense, operating_expenses,
+admin_expenses, provision_expense, investment_securities, dividend_amount
+
+#### Ratio/percentage metrics (use `"unit": "%"`)
+cet1_ratio, tier1_ratio, total_car, npl_ratio, provision_coverage, roe, roa,
+nim, cost_income_ratio, lcr, nsfr, lcr_reported, nsfr_reported, leverage_ratio,
+cet1_ratio_prev, eps, bvps
+
 ## Output
 
 Write `{data_dir}/{code}/leaf_values.json`. This must be a single valid JSON file conforming to `assets/output_schema.json`.
@@ -133,26 +171,51 @@ Write `{data_dir}/{code}/leaf_values.json`. This must be a single valid JSON fil
   "extraction_timestamp": "2026-06-03T10:00:00Z",
   "source_file": "data/2026-06-03/{code}/structured.md",
   "values": {
-    "dividend_amount": {
-      "value": 325.5,
+    "total_assets": {
+      "value": 53477773.0,
       "unit": "百万元",
       "period": "FY2025",
-      "source": "Section D",
-      "confidence": "high"
-    },
-    "cet1_net_reported": {
-      "value": 18200,
-      "unit": "百万元",
-      "period": "Q1_2026",
-      "source": "Section B",
-      "confidence": "high"
+      "source": "Section A",
+      "confidence": "high",
+      "_unit_note": "Source: 百万元, already normalized by L0c"
     },
     "net_profit": {
       "value": 1580.3,
       "unit": "百万元",
       "period": "FY2025",
       "source": "Section A",
+      "confidence": "high",
+      "_unit_note": "Source: 百万元, no conversion needed"
+    },
+    "cet1_net_reported": {
+      "value": 18200.0,
+      "unit": "百万元",
+      "period": "Q1_2026",
+      "source": "Section B",
+      "confidence": "high",
+      "_unit_note": "Source: 百万元, already normalized by L0c"
+    },
+    "cet1_ratio": {
+      "value": 12.5,
+      "unit": "%",
+      "period": "Q1_2026",
+      "source": "Section B",
       "confidence": "high"
+    },
+    "npl_ratio": {
+      "value": 1.35,
+      "unit": "%",
+      "period": "FY2025",
+      "source": "Section B",
+      "confidence": "high"
+    },
+    "dividend_amount": {
+      "value": 325.5,
+      "unit": "百万元",
+      "period": "FY2025",
+      "source": "Section B",
+      "confidence": "high",
+      "_unit_note": "Original: 32.55亿元, converted by L0c to 百万元 (×100)"
     },
     "corporate_customer_count": {
       "value": null,
@@ -180,52 +243,7 @@ If completeness < 0.5, add a warning to the output JSON.
 
 ## Processing
 
-## Unit Normalization (MANDATORY)
-
-**All monetary values MUST be normalized to 百万元 (million RMB) before writing leaf_values.json.**
-
-### Step 0: Read the Unit Normalization Report
-
-Before extracting any values, read `{data_dir}/{code}/structured.md` Section G2 "单位归一化报告". This table records:
-- Each section's original unit
-- The normalization factor applied
-- The normalization status (✅ / ⚠️)
-
-Cross-check: for each monetary leaf value you extract, verify the structured.md section it came from has status ✅ in G2. If any section has status ⚠️, manually verify the normalization for values from that section.
-
-
-Chinese banks report in different units:
-- Large banks (工商/建设/农业/中国/交通/邮储): typically 百万元
-- Some city/rural commercial banks: may use 千元 (thousands) or 元
-
-**Normalization rules**:
-1. Check Section A of structured.md for the unit label in table headers (e.g., "百万元", "千元", "元")
-2. Convert all monetary values to 百万元:
-   - If source is 千元: divide by 10
-   - If source is 元: divide by 1,000,000
-   - If source is already 百万元: keep as-is
-3. Record the original unit in a `_unit_note` field
-4. If the unit cannot be determined, flag with confidence "low" and record a note
-
-**Monetary metrics requiring normalization**:
-total_assets, total_loans, total_deposits, total_liabilities, operating_income,
-net_interest_income, net_fee_income, operating_profit, net_profit_parent,
-credit_rwa, market_rwa, operational_rwa, rwa_total
-
-**Percentage/ratio metrics do NOT need normalization**:
-cet1_ratio, tier1_ratio, total_car, npl_ratio, provision_coverage, roe, roa,
-nim, cost_income_ratio, eps, bvps
-
-Example:
-```json
-"total_assets": {
-  "value": 53477773.0,
-  "unit": "百万元",
-  "source": "Section A",
-  "confidence": "high",
-  "_unit_note": "Source: 百万元, no conversion needed"
-}
-```
+L0c already handled unit normalization in structured.md Section G2. Your job is to VERIFY, not re-normalize. See Unit Rules above for the complete specification — monetary values use `"unit": "百万元"`, ratios use `"unit": "%"`.
 
 ## Section Hints from structured.md
 
@@ -252,6 +270,7 @@ After writing `leaf_values.json`, verify:
 2. **No markdown contamination**: The file does NOT start with ``` or any markdown header. First character is `{`.
 3. `bank_code` field matches the assigned code.
 4. All metrics from `leaf_inventory` are present in the `values` object (~35 Section A/B surface metrics).
+5. **Unit correctness**: No monetary metric has `"unit": "%"` and no ratio metric has `"unit": "百万元"`. Cross-check against the Monetary/Ratio lists in Unit Rules.
 
 Report a one-line summary:
 - Bank: {code}, metrics extracted: {count}, NOT_FOUND: {count}, completeness: {pct}%
