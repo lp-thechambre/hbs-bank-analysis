@@ -1,0 +1,263 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/lp-thechambre/hbs-bank-analysis/depth-output-schema",
+  "title": "HBS-Bank-Depth Output Schemas",
+  "description": "JSON Schema definitions for all output file types produced by the Depth skill pipeline.",
+  "definitions": {
+    "BankCode": {
+      "type": "string",
+      "pattern": "^(SH|SZ)\\d{6}$",
+      "description": "A-share stock code with exchange prefix."
+    },
+    "ConfidenceLevel": {
+      "type": "string",
+      "enum": ["high", "medium", "low", "not_found"]
+    },
+    "DataProvenance": {
+      "type": "object",
+      "description": "Records the actual data source and extraction method for auditability.",
+      "properties": {
+        "source": {
+          "type": "string",
+          "enum": ["pdf_extraction", "ai_knowledge_base", "peer_benchmark_computed", "api_discovery", "web_search"],
+          "description": "Actual data origin — be honest: ai_knowledge_base means recalled from training data, not extracted from documents."
+        },
+        "source_file": {
+          "type": ["string", "null"],
+          "description": "Path to the file data was extracted from, if applicable."
+        },
+        "extraction_method": {
+          "type": ["string", "null"],
+          "description": "Tool or method used: pdfplumber, pdftotext, PyPDF2, AI recall, etc."
+        },
+        "verified": {
+          "type": "boolean",
+          "description": "Whether the source file was verified to exist and be non-empty before extraction."
+        }
+      },
+      "required": ["source", "verified"]
+    },
+    "MetricValue": {
+      "type": "object",
+      "properties": {
+        "value": { "type": ["number", "null"] },
+        "unit": { "type": "string" },
+        "source": { "type": "string" },
+        "confidence": { "$ref": "#/definitions/ConfidenceLevel" }
+      },
+      "required": ["value", "unit", "confidence"]
+    },
+    "ComputedMetric": {
+      "type": "object",
+      "properties": {
+        "value": { "type": ["number", "null"] },
+        "unit": { "type": "string" },
+        "percentile": { "type": ["number", "null"] },
+        "flag": { "type": ["string", "null"], "enum": ["red", "watch", null] }
+      },
+      "required": ["value", "unit", "percentile", "flag"]
+    },
+    "TextDiffSignal": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["DISCLOSURE_DISAPPEARANCE", "LANGUAGE_DRIFT", "ATTRIBUTION_SHIFT", "SELECTIVE_DISCLOSURE"]
+        },
+        "field": { "type": "string" },
+        "severity": { "type": "string", "enum": ["high", "medium", "low"] },
+        "evidence": { "type": "string" },
+        "cross_ref": { "type": "string" }
+      },
+      "required": ["type", "severity", "evidence"]
+    },
+    "CuriosityFlag": {
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "topic": { "type": "string" },
+        "severity": { "type": "string", "enum": ["high", "medium", "low"] },
+        "related_metrics": { "type": "array", "items": { "type": "string" } },
+        "question": { "type": "string" }
+      },
+      "required": ["id", "topic", "severity", "question"]
+    },
+    "DataGap": {
+      "type": "object",
+      "properties": {
+        "metric": { "type": "string" },
+        "missing_input": { "type": "string" },
+        "period": { "type": "string" }
+      },
+      "required": ["metric", "missing_input"]
+    },
+    "KeyFinding": {
+      "type": "object",
+      "properties": {
+        "finding": { "type": "string" },
+        "source_section": { "type": "string" },
+        "confidence": { "$ref": "#/definitions/ConfidenceLevel" }
+      },
+      "required": ["finding", "source_section", "confidence"]
+    },
+    "ManagementAssessment": {
+      "type": "object",
+      "properties": {
+        "strategy_clarity": { "type": "string" },
+        "tone": { "type": "string" },
+        "credibility": { "type": "string" }
+      },
+      "required": ["strategy_clarity", "tone", "credibility"]
+    },
+    "EdgeMarker": {
+      "type": "object",
+      "properties": {
+        "code": { "$ref": "#/definitions/BankCode" },
+        "signal_type": {
+          "type": "string",
+          "enum": ["workplace_rumor", "hiring_signal", "regulatory_action", "industry_rumor", "supply_chain_signal"]
+        },
+        "source_url": { "type": "string" },
+        "source_type": { "type": "string" },
+        "confidence": { "type": "string", "enum": ["high", "medium", "low"] },
+        "corroborates": { "type": "array", "items": { "type": "string" } },
+        "contradicts": { "type": "array", "items": { "type": "string" } },
+        "summary": { "type": "string" },
+        "data_provenance": { "$ref": "#/definitions/DataProvenance" }
+      },
+      "required": ["code", "signal_type", "source_url", "source_type", "confidence", "summary", "data_provenance"]
+    },
+    "AuditMarker": {
+      "type": "object",
+      "properties": {
+        "code": { "$ref": "#/definitions/BankCode" },
+        "integrity_score": { "type": "integer", "minimum": 0, "maximum": 100 },
+        "integrity_red_flags": { "type": "array", "items": { "type": "string" } },
+        "resilience_score": { "type": "integer", "minimum": -7, "maximum": 7 },
+        "resilience_signals": { "type": "array", "items": { "type": "string" } },
+        "management_verdict": { "type": "string" }
+      },
+      "required": ["code", "integrity_score", "integrity_red_flags", "resilience_score", "resilience_signals", "management_verdict"]
+    },
+    "Rating": {
+      "type": "string",
+      "enum": ["STRONG_BUY", "BUY", "HOLD", "SELL", "STRONG_SELL"]
+    },
+    "FollowUpQuestion": {
+      "type": "object",
+      "properties": {
+        "bank_code": { "$ref": "#/definitions/BankCode" },
+        "bank_name": { "type": "string" },
+        "question": { "type": "string" },
+        "source_layer": { "type": "string" },
+        "suggested_action": { "type": "string" }
+      },
+      "required": ["bank_code", "question", "source_layer"]
+    },
+    "PerBankScan": {
+      "type": "object",
+      "properties": {
+        "code": { "$ref": "#/definitions/BankCode" },
+        "computed_metrics": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/definitions/ComputedMetric" }
+        },
+        "text_diff_signals": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/TextDiffSignal" }
+        },
+        "curiosity_flags": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/CuriosityFlag" }
+        },
+        "data_gaps": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/DataGap" }
+        },
+        "qual_handoff": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "edge_handoff": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "completeness": { "type": "number", "minimum": 0, "maximum": 1 },
+        "data_provenance": { "$ref": "#/definitions/DataProvenance" }
+      },
+      "required": ["code", "computed_metrics", "text_diff_signals", "curiosity_flags", "data_gaps", "qual_handoff", "edge_handoff", "completeness", "data_provenance"]
+    },
+    "PerBankQual": {
+      "type": "object",
+      "properties": {
+        "code": { "$ref": "#/definitions/BankCode" },
+        "key_findings": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/KeyFinding" }
+        },
+        "management_assessment": { "$ref": "#/definitions/ManagementAssessment" },
+        "flags_resolved": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "flags_escalated": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "new_flags": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "narrative": { "type": "string" },
+        "data_provenance": { "$ref": "#/definitions/DataProvenance" }
+      },
+      "required": ["code", "key_findings", "management_assessment", "flags_resolved", "flags_escalated", "new_flags", "narrative", "data_provenance"]
+    },
+    "FinalOutput": {
+      "type": "object",
+      "properties": {
+        "schema_version": { "const": "v1" },
+        "run_metadata": {
+          "type": "object",
+          "properties": {
+            "run_date": { "type": "string", "format": "date" },
+            "data_period": { "type": "string" },
+            "total_banks": { "type": "integer" },
+            "completed_layers": { "type": "integer" },
+            "degraded_banks": { "type": "array", "items": { "$ref": "#/definitions/BankCode" } },
+            "pipeline_mode": { "type": "string", "enum": ["single", "streamlined", "full"] },
+            "errors": { "type": "array", "items": { "type": "string" } },
+            "data_provenance": { "$ref": "#/definitions/DataProvenance" }
+          },
+          "required": ["run_date", "data_period", "total_banks", "completed_layers", "pipeline_mode", "data_provenance"]
+        },
+        "ratings": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "code": { "$ref": "#/definitions/BankCode" },
+              "bank_name": { "type": "string" },
+              "voh_score": { "type": "number", "minimum": 0, "maximum": 100 },
+              "dividend_score": { "type": "number", "minimum": 0, "maximum": 100 },
+              "diversity_score": { "type": "number", "minimum": 0, "maximum": 100 },
+              "growth_score": { "type": "number", "minimum": 0, "maximum": 100 },
+              "rating": { "$ref": "#/definitions/Rating" },
+              "rank": { "type": "integer" },
+              "integrity_score": { "type": "integer", "minimum": 0, "maximum": 100 },
+              "resilience_score": { "type": "integer", "minimum": -7, "maximum": 7 }
+            },
+            "required": ["code", "voh_score", "rating", "rank"]
+          }
+        },
+        "depth_report_path": { "type": "string" },
+        "analysis_trail_path": { "type": "string" },
+        "follow_up_questions": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/FollowUpQuestion" }
+        }
+      },
+      "required": ["schema_version", "run_metadata", "ratings", "depth_report_path", "analysis_trail_path", "follow_up_questions"]
+    }
+  }
+}

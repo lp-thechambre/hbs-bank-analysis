@@ -1,0 +1,138 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/lp-thechambre/hbs-bank-analysis/screen-output-v1",
+  "title": "HBS-Screen Output v1",
+  "description": "Output schema for the HBS-Screen 4-layer spawn pipeline (ARCHITECTURE-v2)",
+  "type": "object",
+  "required": ["screen_run", "candidates", "rejected"],
+  "properties": {
+    "screen_run": {
+      "type": "object",
+      "required": ["id", "timestamp", "data_source", "total_banks", "final_candidates"],
+      "properties": {
+        "id": { "type": "string", "description": "Unique run identifier" },
+        "timestamp": { "type": "string", "format": "date-time" },
+        "data_source": { "type": "string", "enum": ["eastmoney_f10_api"] },
+        "data_as_of": { "type": "string" },
+        "data_directory": { "type": "string", "description": "Path to data/YYYY-MM-DD/ directory" },
+        "total_banks": { "type": "integer", "minimum": 1, "maximum": 42 },
+        "layers_completed": {
+          "type": "array",
+          "items": { "type": "string", "enum": ["data_engineering", "quant", "edge", "qualitative", "synthesis"] }
+        },
+        "final_candidates": { "type": "integer", "minimum": 1, "maximum": 15 },
+        "pipeline_version": { "type": "string", "const": "v1" }
+      }
+    },
+    "candidates": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["code", "name", "type", "score", "rank", "dimension_scores", "source_tracking"],
+        "properties": {
+          "code": { "type": "string", "pattern": "^(SH|SZ)\\d{6}$" },
+          "name": { "type": "string" },
+          "type": { "type": "string", "enum": ["traditional_commercial", "integrated", "trading_ib"] },
+          "score": { "type": "number", "minimum": 0, "maximum": 100 },
+          "rank": { "type": "integer", "minimum": 1 },
+          "tier": { "type": "string", "enum": ["green", "yellow", "red"], "description": "绿=强烈推荐深度分析, 黄=可考虑, 红=不建议进入下轮" },
+          "dimension_scores": {
+            "type": "object",
+            "properties": {
+              "D1_capital_preservation": { "type": ["number", "null"], "minimum": 0, "maximum": 100 },
+              "D2_asset_quality": { "type": ["number", "null"], "minimum": 0, "maximum": 100 },
+              "D3_profitability": { "type": ["number", "null"], "minimum": 0, "maximum": 100 },
+              "D4_growth": { "type": ["number", "null"], "minimum": 0, "maximum": 100 },
+              "D5_valuation": { "type": ["number", "null"], "minimum": 0, "maximum": 100 }
+            }
+          },
+          "flags": { "type": "array", "items": { "type": "string" } },
+          "reasons": { "type": "string", "description": "Synthesis rationale including conflict resolution notes" },
+          "source_tracking": {
+            "type": "object",
+            "description": "Full trace of upstream markers that contributed to this candidate",
+            "properties": {
+              "quant": {
+                "type": "object",
+                "properties": {
+                  "status": { "type": "string", "enum": ["PASS", "WATCH", "REJECT"] },
+                  "confidence": { "type": "string" },
+                  "curiosity": { "type": "string" }
+                }
+              },
+              "edge": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "anomaly_type": { "type": "string" },
+                    "severity": { "type": "string" }
+                  }
+                }
+              },
+              "qual": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "group": { "type": "string" },
+                    "assessment": { "type": "string", "enum": ["PASS", "WATCH", "REJECT"] },
+                    "group_rank": { "type": "integer" }
+                  }
+                }
+              },
+              "override": {
+                "description": "Non-null if synthesis overrode an upstream marker decision",
+                "oneOf": [
+                  { "type": "null" },
+                  { "type": "string" }
+                ]
+              }
+            }
+          },
+          "data_quality": {
+            "type": "object",
+            "properties": {
+              "completeness": { "type": "number", "minimum": 0, "maximum": 1 },
+              "missing_fields": { "type": "array", "items": { "type": "string" } },
+              "confidence": { "type": "string", "enum": ["high", "medium", "low"] }
+            }
+          }
+        }
+      }
+    },
+    "rejected": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["code", "name", "reason"],
+        "properties": {
+          "code": { "type": "string" },
+          "name": { "type": "string" },
+          "tier": { "type": "string", "enum": ["green", "yellow", "red"] },
+          "layer": { "type": "string", "description": "Which layer rejected this bank" },
+          "reason": { "type": "string" },
+          "dimension": { "type": "string" }
+        }
+      }
+    },
+    "analyst_notes": { "type": "string", "description": "Synthesis analyst notes" },
+    "all_banks_summary": {
+      "type": "array",
+      "description": "All 42 banks with tier classification for main session summary display",
+      "items": {
+        "type": "object",
+        "required": ["code", "name", "tier"],
+        "properties": {
+          "code": { "type": "string" },
+          "name": { "type": "string" },
+          "tier": { "type": "string", "enum": ["green", "yellow", "red"] },
+          "score": { "type": ["number", "null"] },
+          "brief_reason": { "type": "string", "description": "One-line reason for tier assignment" }
+        }
+      }
+    },
+    "warnings": { "type": "array", "items": { "type": "string" } },
+    "errors": { "type": "array", "items": { "type": "string" } }
+  }
+}

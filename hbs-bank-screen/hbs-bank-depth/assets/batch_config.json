@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "HBS-Bank-Depth Batch Configuration",
+  "description": "Pipeline execution parameters for the Depth skill.",
+  "batch_size": 3,
+  "pipeline_timeout_seconds": 7200,
+  "spawn_timeout_seconds": 600,
+  "edge_search_budget": 20,
+  "data_home": "{workspace}/.hbs-bank",
+  "schema_version": "v1",
+  "min_banks_for_full_pipeline": 6,
+  "max_banks_single_mode": 1,
+  "max_banks_streamlined_mode": 5,
+  "download_request_delay_seconds": 2,
+  "download_timeout_seconds": 30,
+  "web_fetch_mode": "headless",
+  "prefer_api_over_browser": true,
+  "web_search": {
+    "provider": "auto",
+    "search_locale": "zh-CN",
+    "search_time_range": "year",
+    "max_results_per_query": 10,
+    "providers": {
+      "searxng": {
+        "base_url": "",
+        "note": "Self-hosted searXNG instance. Set base_url if using a custom port or host.",
+        "engines": ["baidu", "sogou", "bing"],
+        "engine_weights": {"baidu": 1.5, "sogou": 1.0, "bing": 0.3},
+        "timeout_seconds": 15
+      },
+      "platform_default": {
+        "note": "Use platform-provided web_search tool (OpenClaw/Claude Code built-in). No configuration needed."
+      }
+    },
+    "fallback_chain": ["searxng", "platform_default"],
+    "query_template": {
+      "regulatory": "{bank_name} 监管 罚单 {year}",
+      "workplace": "{bank_name} 员工 裁员 欠薪",
+      "hiring": "{bank_name} 招聘 {department}",
+      "industry_rumor": "{bank_name} {topic} 风险 传闻",
+      "supply_chain": "{bank_name} 股东 质押 关联"
+    }
+  },
+  "progress_tracking": {
+    "method": "pipeline_state.json",
+    "strategic_announces": ["L0_complete", "L3_complete", "pipeline_complete"],
+    "note": "Pipeline runs autonomously. Progress logged to pipeline_state.json. No mid-pipeline user reports."
+  },
+  "kpi_gates": {
+    "enabled": true,
+    "rubric_path": "references/kpi_rubric.json",
+    "max_total_redo_attempts": 10,
+    "halt_on_mass_failure": true,
+    "mass_failure_threshold": 0.5
+  }
+}

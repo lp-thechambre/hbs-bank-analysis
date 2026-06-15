@@ -1,0 +1,133 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/lp-thechambre/hbs-bank-analysis/portfolio-output-schema",
+  "title": "HBS-Bank-Portfolio Output Schema",
+  "description": "JSON Schema for final_output.json produced by the Portfolio skill.",
+  "definitions": {
+    "BankCode": {
+      "type": "string",
+      "pattern": "^(SH|SZ)\\d{6}$",
+      "description": "A-share stock code with exchange prefix."
+    },
+    "Rating": {
+      "type": "string",
+      "enum": ["STRONG_BUY", "BUY", "HOLD", "SELL", "STRONG_SELL"]
+    },
+    "StrategicWeightEntry": {
+      "type": "object",
+      "properties": {
+        "code": { "$ref": "#/definitions/BankCode" },
+        "bank_name": { "type": "string" },
+        "rating": { "$ref": "#/definitions/Rating" },
+        "voh_score": { "type": ["number", "null"], "minimum": 0, "maximum": 100 },
+        "integrity_score": { "type": ["integer", "null"], "minimum": 0, "maximum": 100 },
+        "resilience_score": { "type": ["integer", "null"], "minimum": -7, "maximum": 7 },
+        "mcap_weight": { "type": "number", "minimum": 0, "maximum": 1 },
+        "strategic_weight": { "type": "number", "minimum": 0, "maximum": 1 },
+        "voh_portfolio_rank": { "type": "integer", "minimum": 1 },
+        "rank_adjustment": { "type": "integer" },
+        "gold_signals": { "type": "array", "items": { "type": "string" } },
+        "mine_signals": { "type": "array", "items": { "type": "string" } }
+      },
+      "required": ["code", "bank_name", "rating", "strategic_weight"]
+    },
+    "TacticalStockEntry": {
+      "type": "object",
+      "properties": {
+        "code": { "$ref": "#/definitions/BankCode" },
+        "bank_name": { "type": "string" },
+        "weight": { "type": "number", "minimum": 0, "maximum": 1 },
+        "beta": { "type": ["number", "null"] },
+        "annualized_volatility": { "type": ["number", "null"] },
+        "rating": { "$ref": "#/definitions/Rating" }
+      },
+      "required": ["code", "bank_name", "weight"]
+    },
+    "TacticalVersion": {
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "stocks": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/TacticalStockEntry" }
+        },
+        "portfolio_beta": { "type": ["number", "null"] },
+        "portfolio_vol": { "type": ["number", "null"] },
+        "stock_count": { "type": "integer" }
+      },
+      "required": ["name", "stocks", "stock_count"]
+    },
+    "ChecklistSummary": {
+      "type": "object",
+      "properties": {
+        "phase1_items": { "type": "integer" },
+        "phase2_items_triggered": { "type": "integer" },
+        "phase3_items": { "type": "integer" },
+        "spontaneous_items": { "type": "integer" },
+        "total_mine_signals": { "type": "integer" },
+        "total_gold_signals": { "type": "integer" }
+      },
+      "required": ["phase1_items", "phase3_items", "total_mine_signals", "total_gold_signals"]
+    },
+    "StressTestSummary": {
+      "type": "object",
+      "properties": {
+        "rate_shock_vulnerable_weight": { "type": "number" },
+        "credit_shock_thin_buffer_weight": { "type": "number" },
+        "common_risk_factors": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "concentration_flags": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      },
+      "required": ["rate_shock_vulnerable_weight", "credit_shock_thin_buffer_weight", "common_risk_factors"]
+    },
+    "RunMetadata": {
+      "type": "object",
+      "properties": {
+        "run_date": { "type": "string", "format": "date" },
+        "investment_objective": {
+          "type": "array",
+          "items": { "type": "string", "enum": ["high_beta", "low_beta", "dividend", "balanced"] }
+        },
+        "portfolio_size": { "type": "integer", "minimum": 4, "maximum": 15 },
+        "single_stock_cap": { "type": "number", "minimum": 0.15, "maximum": 0.25 },
+        "horizon": { "type": "string" },
+        "depth_source": { "type": "string" }
+      },
+      "required": ["run_date", "investment_objective", "portfolio_size", "single_stock_cap", "horizon", "depth_source"]
+    },
+    "FinalOutput": {
+      "type": "object",
+      "properties": {
+        "schema_version": { "const": "v1" },
+        "run_metadata": { "$ref": "#/definitions/RunMetadata" },
+        "strategic_weights": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/StrategicWeightEntry" }
+        },
+        "tactical_weights": {
+          "type": "object",
+          "properties": {
+            "low_beta_defensive": { "$ref": "#/definitions/TacticalVersion" },
+            "high_beta_aggressive": { "$ref": "#/definitions/TacticalVersion" },
+            "equal_weight": { "$ref": "#/definitions/TacticalVersion" },
+            "dividend_oriented": { "$ref": "#/definitions/TacticalVersion" }
+          }
+        },
+        "checklist_summary": { "$ref": "#/definitions/ChecklistSummary" },
+        "stress_test_summary": { "$ref": "#/definitions/StressTestSummary" },
+        "risk_warnings": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "report_path": { "type": "string" },
+        "disclaimer": { "const": "本报告仅供参考研究，不构成投资建议。" }
+      },
+      "required": ["schema_version", "run_metadata", "strategic_weights", "tactical_weights", "checklist_summary", "stress_test_summary", "risk_warnings", "report_path", "disclaimer"]
+    }
+  }
+}

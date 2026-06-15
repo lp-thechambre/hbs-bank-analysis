@@ -1,0 +1,962 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "HBS Formula Dependency Graph",
+  "description": "Complete dependency graph for all derived metrics in the HBS methodology v0.3. Includes all original indicators (marginal concepts, CDP, hidden NPL detection, Basel III deep analysis, macro-strategy fit). Pre-computed topological ordering eliminates the need for spawns to do their own dependency resolution.",
+  "methodology_version": "RBM-BNK-2026-003 v0.3",
+  "unit_convention": {
+    "monetary": "百万元 (million RMB)",
+    "percentage": "%",
+    "per_share": "元",
+    "count": "户/家/个",
+    "normalization_rules": {
+      "千元_to_百万元": "divide by 10",
+      "万元_to_百万元": "multiply by 10",
+      "亿元_to_百万元": "multiply by 100",
+      "元_to_百万元": "divide by 1,000,000"
+    },
+    "validation": {
+      "description": "Before computing any formula, verify all monetary inputs are in 百万元. If leaf_values.json has mixed units, abort computation for that formula and log a UNIT_MISMATCH data_gap.",
+      "order_of_magnitude_check": "If any monetary input differs from another by > 100x, flag as possible unit mismatch and skip computation."
+    }
+  },
+  "formulas": {
+    "CET1_net_before_dividend": {
+      "name_zh": "分红前核心一级资本净额",
+      "methodology_chapter": "ch3.2",
+      "expression": "cet1_net_reported + dividend_amount",
+      "inputs": ["cet1_net_reported", "dividend_amount"],
+      "inputs_detail": {
+        "cet1_net_reported": {"category": "leaf", "source_section": "B"},
+        "dividend_amount": {"category": "leaf", "source_section": "D"}
+      },
+      "output_unit": "百万元"
+    },
+    "CDP_capital": {
+      "name_zh": "分红资本侵蚀度 (原创: 替代FCF框架)",
+      "methodology_chapter": "ch3.2",
+      "expression": "dividend_amount / CET1_net_before_dividend * 100",
+      "inputs": ["dividend_amount", "CET1_net_before_dividend"],
+      "inputs_detail": {
+        "dividend_amount": {"category": "leaf", "source_section": "D"},
+        "CET1_net_before_dividend": {"category": "derived", "formula": "CET1_net_before_dividend"}
+      },
+      "output_unit": "%",
+      "red_flags": {"threshold": "> 80", "severity": "high", "description": "股息消耗 >80% 分红前CET1 — 不可持续"},
+      "watch_flags": {"threshold": "> 50", "severity": "medium", "description": "股息消耗 >50% — 需关注可持续性"}
+    },
+    "CET1_ratio": {
+      "name_zh": "核心一级资本充足率",
+      "methodology_chapter": "ch15.2",
+      "expression": "cet1_net_reported / rwa_total * 100",
+      "inputs": ["cet1_net_reported", "rwa_total"],
+      "inputs_detail": {
+        "cet1_net_reported": {"category": "leaf", "source_section": "B"},
+        "rwa_total": {"category": "derived", "formula": "RWA_total"}
+      },
+      "output_unit": "%",
+      "red_flags": {"threshold": "< 8.5", "severity": "high", "description": "CET1 低于 8.5% 监管舒适线"},
+      "watch_flags": {"threshold": "< 10.0", "severity": "medium", "description": "CET1 逼近舒适区下限"}
+    },
+    "cet1_delta": {
+      "name_zh": "CET1 同比变动",
+      "methodology_chapter": "ch15.2",
+      "expression": "cet1_net_reported / (total_equity - total_equity_prev + net_profit) * 100",
+      "inputs": ["cet1_ratio", "cet1_ratio_prev"],
+      "inputs_detail": {
+        "cet1_ratio": {"category": "leaf", "source_section": "B"},
+        "cet1_ratio_prev": {"category": "leaf", "source_section": "B"}
+      },
+      "output_unit": "pp",
+      "red_flags": {"threshold": "< -1.0", "severity": "high", "description": "CET1 年降幅 > 1pp — 资本加速侵蚀"},
+      "watch_flags": {"threshold": "< -0.5", "severity": "medium", "description": "CET1 趋势性下降"}
+    },
+    "RWA_total": {
+      "name_zh": "风险加权资产总额",
+      "methodology_chapter": "ch15.2",
+      "expression": "rwa_credit + rwa_market + rwa_operational",
+      "inputs": ["rwa_credit", "rwa_market", "rwa_operational"],
+      "inputs_detail": {
+        "rwa_credit": {"category": "leaf", "source_section": "B"},
+        "rwa_market": {"category": "leaf", "source_section": "B"},
+        "rwa_operational": {"category": "leaf", "source_section": "B"}
+      },
+      "output_unit": "百万元"
+    },
+    "CAR_total": {
+      "name_zh": "总资本充足率",
+      "methodology_chapter": "ch15.2",
+      "expression": "total_capital / rwa_total * 100",
+      "inputs": ["total_capital", "rwa_total"],
+      "inputs_detail": {
+        "total_capital": {"category": "leaf", "source_section": "B"},
+        "rwa_total": {"category": "derived", "formula": "RWA_total"}
+      },
+      "output_unit": "%",
+      "red_flags": {"threshold": "< 11.5", "severity": "high", "description": "总CAR低于SIB监管最低"},
+      "watch_flags": {"threshold": "< 13.0", "severity": "medium"}
+    },
+    "capital_quality_ratio": {
+      "name_zh": "资本质量比率 (原创: CET1/一级资本)",
+      "methodology_chapter": "ch15.3.1",
+      "expression": "cet1_net_reported / tier1_capital * 100",
+      "inputs": ["cet1_net_reported", "tier1_capital"],
+      "inputs_detail": {
+        "cet1_net_reported": {"category": "leaf", "source_section": "B"},
+        "tier1_capital": {"category": "leaf", "source_section": "B"}
+      },
+      "output_unit": "%",
+      "red_flags": {"threshold": "< 70", "severity": "high", "description": "过度依赖永续债/优先股, 资本质量存疑"},
+      "watch_flags": {"threshold": "< 85", "severity": "medium", "description": "混合资本工具占比偏高"}
+    },
+    "leverage_gap": {
+      "name_zh": "杠杆缺口 (原创: 检测RWA操纵)",
+      "methodology_chapter": "ch15.3.2",
+      "expression": "CAR_total / (leverage_ratio / 100) - 1",
+      "inputs": ["CAR_total", "leverage_ratio"],
+      "inputs_detail": {
+        "CAR_total": {"category": "derived", "formula": "CAR_total"},
+        "leverage_ratio": {"category": "leaf", "source_section": "B"}
+      },
+      "output_unit": "ratio",
+      "red_flags": {"threshold": "> 1.5", "severity": "high", "description": "杠杆缺口大 — RWA计量方法可能存在'优化'嫌疑"},
+      "watch_flags": {"threshold": "> 1.0", "severity": "medium", "description": "杠杆缺口偏高, 资本充足率可能虚高"}
+    },
+    "rwa_density": {
+      "name_zh": "RWA密度 (原创: 资产风险密度)",
+      "methodology_chapter": "ch15.3.4",
+      "expression": "rwa_total / total_assets * 100",
+      "inputs": ["rwa_total", "total_assets"],
+      "inputs_detail": {
+        "rwa_total": {"category": "derived", "formula": "RWA_total"},
+        "total_assets": {"category": "leaf", "source_section": "A"}
+      },
+      "output_unit": "%",
+      "watch_flags": {"threshold": "> 70", "severity": "medium", "description": "RWA密度 > 70% — 资产以高风险权重为主"}
+    },
+    "ROE_fy": {
+      "name_zh": "净资产收益率(全年)",
+      "methodology_chapter": "ch9.2",
+      "expression": "net_profit_fy / total_equity_avg_fy * 100",
+      "inputs": ["net_profit_fy", "total_equity_avg_fy"],
+      "inputs_detail": {
+        "net_profit_fy": {"category": "leaf", "source_section": "A", "period": "FY"},
+        "total_equity_avg_fy": {"category": "derived", "formula": "total_equity_avg_fy", "period": "FY"}
+      },
+      "output_unit": "%",
+      "period": "full_year",
+      "note": "全年口径。基于年度净利润和平均净资产计算。用于跨银行可比评分。",
+      "watch_flags": {"threshold": "< 8.0", "severity": "medium", "description": "全年ROE < 8% — 低于权益成本, 价值毁灭"}
+    },
+    "ROE_annualized": {
+      "name_zh": "净资产收益率(季度年化)",
+      "methodology_chapter": "ch9.2",
+      "expression": "net_profit_quarterly * 4 / total_equity_avg_quarterly * 100",
+      "inputs": ["net_profit_quarterly", "total_equity_avg_quarterly"],
+      "inputs_detail": {
+        "net_profit_quarterly": {"category": "leaf", "source_section": "A", "period": "quarterly"},
+        "total_equity_avg_quarterly": {"category": "derived", "note": "基于最新季度数据的平均净资产"}
+      },
+      "output_unit": "%",
+      "period": "annualized_quarterly",
+      "note": "季度年化口径。基于单季度净利润 ×4 年化。不直接与 ROE_fy 比较——两者口径不同。用于趋势观察。",
+      "watch_flags": {"threshold": "< 6.0", "severity": "medium", "description": "年化ROE < 6% — 单季度盈利能力显著下降"}
+    },
+    "total_equity_avg": {
+      "name_zh": "平均净资产",
+      "methodology_chapter": "ch9.2",
+      "expression": "(total_equity + total_equity_prev) / 2",
+      "inputs": ["total_equity", "total_equity_prev"],
+      "inputs_detail": {
+        "total_equity": {"category": "leaf", "source_section": "A"},
+        "total_equity_prev": {"category": "leaf", "source_section": "A"}
+      },
+      "output_unit": "百万元"
+    },
+    "ROA": {
+      "name_zh": "总资产收益率",
+      "methodology_chapter": "ch9.2",
+      "expression": "net_profit / total_assets_avg * 100",
+      "inputs": ["net_profit", "total_assets_avg"],
+      "inputs_detail": {
+        "net_profit": {"category": "leaf", "source_section": "A"},
+        "total_assets_avg": {"category": "derived", "formula": "total_assets_avg"}
+      },
+      "output_unit": "%",
+      "watch_flags": {"threshold": "< 0.5", "severity": "medium", "description": "ROA < 0.5% — 资产利用效率低"}
+    },
+    "total_assets_avg": {
+      "name_zh": "平均总资产",
+      "methodology_chapter": "ch9.2",
+      "expression": "(total_assets + total_assets_prev) / 2",
+      "inputs": ["total_assets", "total_assets_prev"],
+      "inputs_detail": {
+        "total_assets": {"category": "leaf", "source_section": "A"},
+        "total_assets_prev": {"category": "leaf", "source_section": "A"}
+      },
+      "output_unit": "百万元"
+    },
+    "NIM": {
+      "name_zh": "净息差",
+      "methodology_chapter": "ch9.1",
+      "expression": "net_interest_income / interest_earning_assets_avg * 100",
+      "inputs": ["net_interest_income", "interest_earning_assets_avg"],
+      "inputs_detail": {
+        "net_interest_income": {"category": "derived", "formula": "net_interest_income"},
+        "interest_earning_assets_avg": {"category": "derived", "formula": "interest_earning_assets_avg"}
+      },
+      "output_unit": "%",
+      "red_flags": {"threshold": "< 1.2", "severity": "high", "description": "NIM < 1.2% — 严重息差压缩"},
+      "watch_flags": {"threshold": "< 1.6", "severity": "medium", "description": "NIM 低于行业均值"}
+    },
+    "interest_earning_assets_avg": {
+      "name_zh": "平均生息资产",
+      "methodology_chapter": "ch9.1",
+      "expression": "(total_loans + investment_securities + total_loans_prev + investment_securities_prev) / 2",
+      "inputs": ["total_loans", "investment_securities", "total_loans_prev", "investment_securities_prev"],
+      "inputs_detail": {
+        "total_loans": {"category": "leaf", "source_section": "A"},
+        "investment_securities": {"category": "leaf", "source_section": "A"},
+        "total_loans_prev": {"category": "leaf", "source_section": "A"},
+        "investment_securities_prev": {"category": "leaf", "source_section": "A"}
+      },
+      "output_unit": "百万元"
+    },
+    "DPR": {
+      "name_zh": "分红支付率",
+      "methodology_chapter": "ch3.3",
+      "expression": "dividend_amount / net_profit * 100",
+      "inputs": ["dividend_amount", "net_profit"],
+      "inputs_detail": {
+        "dividend_amount": {"category": "leaf", "source_section": "D"},
+        "net_profit": {"category": "leaf", "source_section": "A"}
+      },
+      "output_unit": "%",
+      "red_flags": {"threshold": "> 60", "severity": "medium", "description": "DPR > 60% 可能制约资本积累"},
+      "watch_flags": {"threshold": "> 40", "severity": "low"}
+    },
+    "dividend_stability": {
+      "name_zh": "分红稳定性 (原创: DPR变异系数)",
+      "methodology_chapter": "ch3.4",
+      "expression": "std(DPR_T, DPR_T-1, DPR_T-2) / mean(DPR_T, DPR_T-1, DPR_T-2)",
+      "inputs": ["DPR", "DPR_prev", "DPR_prev2"],
+      "inputs_detail": {
+        "DPR": {"category": "derived", "formula": "DPR"},
+        "DPR_prev": {"category": "derived", "note": "DPR for T-1 period"},
+        "DPR_prev2": {"category": "derived", "note": "DPR for T-2 period"}
+      },
+      "output_unit": "CV",
+      "red_flags": {"threshold": "> 0.3", "severity": "high", "description": "DPR 波动 > 0.3 — 分红策略不稳定"},
+      "watch_flags": {"threshold": "> 0.2", "severity": "medium"}
+    },
+    "NPL_ratio": {
+      "name_zh": "不良贷款率",
+      "methodology_chapter": "ch12.1",
+      "expression": "npl_balance / total_loans * 100",
+      "inputs": ["npl_balance", "total_loans"],
+      "inputs_detail": {
+        "npl_balance": {"category": "leaf", "source_section": "B"},
+        "total_loans": {"category": "leaf", "source_section": "A"}
+      },
+      "output_unit": "%",
+      "red_flags": {"threshold": "> 3.0", "severity": "high", "description": "NPL > 3% — 严重资产质量恶化"},
+      "watch_flags": {"threshold": "> 2.0", "severity": "medium", "description": "NPL 高于行业均值"}
+    },
+    "provision_coverage": {
+      "name_zh": "拨备覆盖率",
+      "methodology_chapter": "ch12.1",
+      "expression": "provision_balance / npl_balance * 100",
+      "inputs": ["provision_balance", "npl_balance"],
+      "inputs_detail": {
+        "provision_balance": {"category": "leaf", "source_section": "B"},
+        "npl_balance": {"category": "leaf", "source_section": "B"}
+      },
+      "output_unit": "%",
+      "red_flags": {"threshold": "< 150", "severity": "high", "description": "拨备覆盖率 < 150% — 缓冲不足"},
+      "watch_flags": {"threshold": "< 200", "severity": "medium", "description": "拨备覆盖率偏低"}
+    },
+    "cost_income_ratio": {
+      "name_zh": "成本收入比(宽口径)",
+      "methodology_chapter": "ch9.2",
+      "expression": "operating_expenses / operating_income * 100",
+      "inputs": ["operating_expenses", "operating_income"],
+      "inputs_detail": {
+        "operating_expenses": {"category": "leaf", "source_section": "A"},
+        "operating_income": {"category": "leaf", "source_section": "A"}
+      },
+      "output_unit": "%",
+      "red_flags": {"threshold": "> 45", "severity": "medium", "description": "宽口径CIR > 45% — 运营效率低"},
+      "watch_flags": {"threshold": "> 35", "severity": "low"},
+      "note": "宽口径含减值损失。银行通常披露窄口径CIR(仅业务及管理费)。需同时在expanded_metrics中计算窄口径版本。"
+    },
+    "cost_income_ratio_narrow": {
+      "name_zh": "成本收入比(窄口径)",
+      "methodology_chapter": "ch9.2",
+      "expression": "admin_expenses / operating_income * 100",
+      "inputs": ["admin_expenses", "operating_income"],
+      "inputs_detail": {
+        "admin_expenses": {"category": "leaf", "source_section": "A", "note": "业务及管理费, 不含减值"},
+        "operating_income": {"category": "leaf", "source_section": "A"}
+      },
+      "output_unit": "%",
+      "red_flags": {"threshold": "> 40", "severity": "medium", "description": "窄口径CIR > 40% — 运营效率偏低"},
+      "watch_flags": {"threshold": "> 30", "severity": "low"}
+    },
+    "loan_to_asset_ratio": {
+      "name_zh": "贷款占总资产比",
+      "methodology_chapter": "ch10",
+      "expression": "total_loans / total_assets * 100",
+      "inputs": ["total_loans", "total_assets"],
+      "inputs_detail": {
+        "total_loans": {"category": "leaf", "source_section": "A"},
+        "total_assets": {"category": "leaf", "source_section": "A"}
+      },
+      "output_unit": "%"
+    },
+    "deposit_to_asset_ratio": {
+      "name_zh": "存款占总资产比",
+      "methodology_chapter": "ch10",
+      "expression": "total_deposits / total_assets * 100",
+      "inputs": ["total_deposits", "total_assets"],
+      "inputs_detail": {
+        "total_deposits": {"category": "leaf", "source_section": "A"},
+        "total_assets": {"category": "leaf", "source_section": "A"}
+      },
+      "output_unit": "%"
+    },
+    "loan_deposit_ratio": {
+      "name_zh": "存贷比",
+      "methodology_chapter": "ch10",
+      "expression": "total_loans / total_deposits * 100",
+      "inputs": ["total_loans", "total_deposits"],
+      "inputs_detail": {
+        "total_loans": {"category": "leaf", "source_section": "A"},
+        "total_deposits": {"category": "leaf", "source_section": "A"}
+      },
+      "output_unit": "%",
+      "red_flags": {"threshold": "> 95", "severity": "high", "description": "存贷比 > 95% — 流动性极度紧张"},
+      "watch_flags": {"threshold": "> 85", "severity": "medium", "description": "存贷比偏高"}
+    },
+    "net_interest_income": {
+      "name_zh": "净利息收入",
+      "methodology_chapter": "ch9.1",
+      "expression": "interest_income - interest_expense",
+      "inputs": ["interest_income", "interest_expense"],
+      "inputs_detail": {
+        "interest_income": {"category": "leaf", "source_section": "A"},
+        "interest_expense": {"category": "leaf", "source_section": "A"}
+      },
+      "output_unit": "百万元"
+    },
+    "net_fee_income": {
+      "name_zh": "净手续费收入",
+      "methodology_chapter": "ch11",
+      "expression": "fee_income - fee_expense",
+      "inputs": ["fee_income", "fee_expense"],
+      "inputs_detail": {
+        "fee_income": {"category": "leaf", "source_section": "A"},
+        "fee_expense": {"category": "leaf", "source_section": "A"}
+      },
+      "output_unit": "百万元"
+    },
+    "fee_income_ratio": {
+      "name_zh": "手续费收入占比",
+      "methodology_chapter": "ch11",
+      "expression": "net_fee_income / operating_income * 100",
+      "inputs": ["net_fee_income", "operating_income"],
+      "inputs_detail": {
+        "net_fee_income": {"category": "derived", "formula": "net_fee_income"},
+        "operating_income": {"category": "leaf", "source_section": "A"}
+      },
+      "output_unit": "%",
+      "watch_flags": {"threshold": "< 10", "severity": "medium", "description": "手续费 < 10% — 收入一维化, NIM压缩周期最脆弱"}
+    },
+    "provision_to_ppop": {
+      "name_zh": "拨备占拨备前利润比",
+      "methodology_chapter": "ch12.1",
+      "expression": "provision_expense / ppop * 100",
+      "inputs": ["provision_expense", "ppop"],
+      "inputs_detail": {
+        "provision_expense": {"category": "leaf", "source_section": "A"},
+        "ppop": {"category": "derived", "formula": "PPOP"}
+      },
+      "output_unit": "%",
+      "red_flags": {"threshold": "> 80", "severity": "high", "description": "拨备吞噬 > 80% PPOP — 信用成本侵蚀盈利"},
+      "watch_flags": {"threshold": "> 50", "severity": "medium"}
+    },
+    "PPOP": {
+      "name_zh": "拨备前利润",
+      "methodology_chapter": "ch9.2",
+      "expression": "operating_income - operating_expenses + provision_expense",
+      "inputs": ["operating_income", "operating_expenses", "provision_expense"],
+      "inputs_detail": {
+        "operating_income": {"category": "leaf", "source_section": "A"},
+        "operating_expenses": {"category": "leaf", "source_section": "A"},
+        "provision_expense": {"category": "leaf", "source_section": "A"}
+      },
+      "output_unit": "百万元"
+    },
+    "overdue90_to_npl": {
+      "name_zh": "逾期90天+/不良贷款 (NPL认定严格度)",
+      "methodology_chapter": "ch12.2",
+      "expression": "overdue_90d_balance / npl_balance * 100",
+      "inputs": ["overdue_90d_balance", "npl_balance"],
+      "inputs_detail": {
+        "overdue_90d_balance": {"category": "leaf", "source_section": "D"},
+        "npl_balance": {"category": "leaf", "source_section": "B"}
+      },
+      "output_unit": "%",
+      "red_flags": {"threshold": "> 120", "severity": "high", "description": "逾期90+/不良 > 120% — 严重NPL认定不足"},
+      "watch_flags": {"threshold": "> 100", "severity": "medium", "description": "逾期90+已超过不良 — 可能认定宽松"}
+    },
+    "overdue_to_npl_ratio": {
+      "name_zh": "逾期总额/不良贷款 (原创: 含90天内逾期)",
+      "methodology_chapter": "ch12.2",
+      "expression": "overdue_total / npl_balance * 100",
+      "inputs": ["overdue_total", "npl_balance"],
+      "inputs_detail": {
+        "overdue_total": {"category": "leaf", "source_section": "D", "note": "逾期贷款总额(含90天内+90天以上)"},
+        "npl_balance": {"category": "leaf", "source_section": "B"}
+      },
+      "output_unit": "%",
+      "red_flags": {"threshold": "> 150", "severity": "high", "description": "逾期总额远超不良 — 大量逾期贷款未被认定为不良"},
+      "watch_flags": {"threshold": "> 110", "severity": "medium"}
+    },
+    "hidden_npl_flag": {
+      "name_zh": "隐藏坏账检测标记 (原创: 3条件判定)",
+      "methodology_chapter": "ch12.2",
+      "expression": "overdue_to_npl_ratio > 110 AND sml_migration_rate > npl_migration_rate AND loan_write_offs > npl_balance * 0.02",
+      "inputs": ["overdue_to_npl_ratio", "sml_migration_rate", "npl_migration_rate", "loan_write_offs", "npl_balance"],
+      "inputs_detail": {
+        "overdue_to_npl_ratio": {"category": "derived", "formula": "overdue_to_npl_ratio"},
+        "sml_migration_rate": {"category": "derived", "formula": "sml_migration_rate"},
+        "npl_migration_rate": {"category": "derived", "formula": "substandard_migration_rate"},
+        "loan_write_offs": {"category": "leaf", "source_section": "D"},
+        "npl_balance": {"category": "leaf", "source_section": "B"}
+      },
+      "output_unit": "boolean",
+      "red_flags": {"threshold": "true", "severity": "high", "description": "疑似掩盖不良: 逾期>不良 + 关注类增速>正常类 + 核销激增 — 三信号一致"}
+    },
+    "sml_migration_rate": {
+      "name_zh": "关注类贷款迁徙率",
+      "methodology_chapter": "ch12.2",
+      "expression": "sml_migration / sml_balance_prev * 100",
+      "inputs": ["sml_migration", "sml_balance_prev"],
+      "inputs_detail": {
+        "sml_migration": {"category": "leaf", "source_section": "B"},
+        "sml_balance_prev": {"category": "leaf", "source_section": "B"}
+      },
+      "output_unit": "%",
+      "red_flags": {"threshold": "> 50", "severity": "high", "description": "关注类迁徙率 > 50% — 大量关注类下迁, 未来NPL压力大"},
+      "watch_flags": {"threshold": "> 30", "severity": "medium"}
+    },
+    "substandard_migration_rate": {
+      "name_zh": "次级类贷款迁徙率",
+      "methodology_chapter": "ch12.2",
+      "expression": "substandard_migration / substandard_balance_prev * 100",
+      "inputs": ["substandard_migration", "substandard_balance_prev"],
+      "inputs_detail": {
+        "substandard_migration": {"category": "leaf", "source_section": "B"},
+        "substandard_balance_prev": {"category": "leaf", "source_section": "B"}
+      },
+      "output_unit": "%",
+      "red_flags": {"threshold": "> 80", "severity": "high", "description": "次级类迁徙率 > 80% — NPL向下迁徙加速"},
+      "watch_flags": {"threshold": "> 50", "severity": "medium"}
+    },
+    "npl_formation_rate": {
+      "name_zh": "不良贷款生成率",
+      "methodology_chapter": "ch12.1",
+      "expression": "(npl_balance - npl_balance_prev + loan_write_offs) / total_loans_avg * 100",
+      "inputs": ["npl_balance", "npl_balance_prev", "loan_write_offs", "total_loans_avg"],
+      "inputs_detail": {
+        "npl_balance": {"category": "leaf", "source_section": "B"},
+        "npl_balance_prev": {"category": "leaf", "source_section": "B"},
+        "loan_write_offs": {"category": "leaf", "source_section": "D"},
+        "total_loans_avg": {"category": "derived", "formula": "total_loans_avg"}
+      },
+      "output_unit": "%",
+      "red_flags": {"threshold": "> 2.0", "severity": "high", "description": "不良生成 > 2% — 资产质量快速恶化"},
+      "watch_flags": {"threshold": "> 1.0", "severity": "medium"}
+    },
+    "total_loans_avg": {
+      "name_zh": "平均贷款总额",
+      "methodology_chapter": "ch12.1",
+      "expression": "(total_loans + total_loans_prev) / 2",
+      "inputs": ["total_loans", "total_loans_prev"],
+      "inputs_detail": {
+        "total_loans": {"category": "leaf", "source_section": "A"},
+        "total_loans_prev": {"category": "leaf", "source_section": "A"}
+      },
+      "output_unit": "百万元"
+    },
+    "corporate_loan_ratio": {
+      "name_zh": "对公贷款占比",
+      "methodology_chapter": "ch18.1",
+      "expression": "corporate_loans / total_loans * 100",
+      "inputs": ["corporate_loans", "total_loans"],
+      "inputs_detail": {
+        "corporate_loans": {"category": "leaf", "source_section": "D"},
+        "total_loans": {"category": "leaf", "source_section": "A"}
+      },
+      "output_unit": "%"
+    },
+    "retail_deposit_ratio": {
+      "name_zh": "零售存款占比",
+      "methodology_chapter": "ch8.2",
+      "expression": "retail_deposit / total_deposits * 100",
+      "inputs": ["retail_deposit", "total_deposits"],
+      "inputs_detail": {
+        "retail_deposit": {"category": "leaf", "source_section": "D"},
+        "total_deposits": {"category": "leaf", "source_section": "A"}
+      },
+      "output_unit": "%",
+      "watch_flags": {"threshold": "< 20", "severity": "medium", "description": "零售存款 < 20% — 高度依赖批发融资"}
+    },
+    "deposit_growth": {
+      "name_zh": "存款增速",
+      "methodology_chapter": "ch8.3",
+      "expression": "(total_deposits - total_deposits_prev) / total_deposits_prev * 100",
+      "inputs": ["total_deposits", "total_deposits_prev"],
+      "inputs_detail": {
+        "total_deposits": {"category": "leaf", "source_section": "A"},
+        "total_deposits_prev": {"category": "leaf", "source_section": "A"}
+      },
+      "output_unit": "%",
+      "red_flags": {"threshold": "< 0", "severity": "high", "description": "存款收缩 — 品牌/客户基础压力"},
+      "watch_flags": {"threshold": "< 5", "severity": "medium"}
+    },
+    "corporate_deposit_growth": {
+      "name_zh": "对公存款增速",
+      "methodology_chapter": "ch8.3",
+      "expression": "(corporate_deposit - corporate_deposit_prev) / corporate_deposit_prev * 100",
+      "inputs": ["corporate_deposit", "corporate_deposit_prev"],
+      "inputs_detail": {
+        "corporate_deposit": {"category": "leaf", "source_section": "D"},
+        "corporate_deposit_prev": {"category": "leaf", "source_section": "D"}
+      },
+      "output_unit": "%"
+    },
+    "loan_growth": {
+      "name_zh": "贷款增速",
+      "methodology_chapter": "ch12.1",
+      "expression": "(total_loans - total_loans_prev) / total_loans_prev * 100",
+      "inputs": ["total_loans", "total_loans_prev"],
+      "inputs_detail": {
+        "total_loans": {"category": "leaf", "source_section": "A"},
+        "total_loans_prev": {"category": "leaf", "source_section": "A"}
+      },
+      "output_unit": "%",
+      "watch_flags": {"threshold": "> 20", "severity": "medium", "description": "贷款增速 > 20% — 快速扩张可能掩盖信用风险"}
+    },
+    "retail_loan_growth": {
+      "name_zh": "零售贷款增速",
+      "methodology_chapter": "ch8.3",
+      "expression": "(retail_loans - retail_loans_prev) / retail_loans_prev * 100",
+      "inputs": ["retail_loans", "retail_loans_prev"],
+      "inputs_detail": {
+        "retail_loans": {"category": "leaf", "source_section": "D"},
+        "retail_loans_prev": {"category": "leaf", "source_section": "D"}
+      },
+      "output_unit": "%",
+      "red_flags": {"threshold": "< -10", "severity": "medium", "description": "零售贷款收缩 > 10% — 零售业务可能在战略撤退"}
+    },
+    "revenue_growth": {
+      "name_zh": "营业收入增速",
+      "methodology_chapter": "ch9.2",
+      "expression": "(operating_income - operating_income_prev) / operating_income_prev * 100",
+      "inputs": ["operating_income", "operating_income_prev"],
+      "inputs_detail": {
+        "operating_income": {"category": "leaf", "source_section": "A"},
+        "operating_income_prev": {"category": "leaf", "source_section": "A"}
+      },
+      "output_unit": "%",
+      "red_flags": {"threshold": "< -10", "severity": "high", "description": "营收下降 > 10% — 业务收缩"},
+      "watch_flags": {"threshold": "< 0", "severity": "medium"}
+    },
+    "profit_growth": {
+      "name_zh": "净利润增速",
+      "methodology_chapter": "ch9.2",
+      "expression": "(net_profit - net_profit_prev) / net_profit_prev * 100",
+      "inputs": ["net_profit", "net_profit_prev"],
+      "inputs_detail": {
+        "net_profit": {"category": "leaf", "source_section": "A"},
+        "net_profit_prev": {"category": "leaf", "source_section": "A"}
+      },
+      "output_unit": "%",
+      "red_flags": {"threshold": "< -20", "severity": "high", "description": "利润暴跌 > 20% — 严重盈利压力"},
+      "watch_flags": {"threshold": "< 0", "severity": "medium"}
+    },
+    "equity_to_assets": {
+      "name_zh": "权益占比(杠杆率倒数)",
+      "methodology_chapter": "ch5.1",
+      "expression": "total_equity / total_assets * 100",
+      "inputs": ["total_equity", "total_assets"],
+      "inputs_detail": {
+        "total_equity": {"category": "leaf", "source_section": "A"},
+        "total_assets": {"category": "leaf", "source_section": "A"}
+      },
+      "output_unit": "%",
+      "watch_flags": {"threshold": "< 5", "severity": "medium", "description": "权益/资产 < 5% — 高杠杆"}
+    },
+    "MDpst_bb": {
+      "name_zh": "边际存款贡献度-对公 (原创)",
+      "methodology_chapter": "ch8.3",
+      "expression": "(corporate_deposit - corporate_deposit_prev) / (corporate_customer_count - corporate_customer_count_prev)",
+      "inputs": ["corporate_deposit", "corporate_deposit_prev", "corporate_customer_count", "corporate_customer_count_prev"],
+      "inputs_detail": {
+        "corporate_deposit": {"category": "leaf", "source_section": "D"},
+        "corporate_deposit_prev": {"category": "leaf", "source_section": "D"},
+        "corporate_customer_count": {"category": "leaf", "source_section": "D"},
+        "corporate_customer_count_prev": {"category": "leaf", "source_section": "D"}
+      },
+      "output_unit": "百万元/户",
+      "data_dependency_note": "客户数数据经常缺失 — 本指标为optional，缺失时标记NOT_FOUND",
+      "watch_flags": {"threshold": "< 0", "severity": "medium", "description": "边际存款贡献为负 — 新增客户质量下降"}
+    },
+    "retail_MDpst": {
+      "name_zh": "边际存款贡献度-零售 (原创)",
+      "methodology_chapter": "ch8.3",
+      "expression": "(retail_deposit - retail_deposit_prev) / (retail_customer_count - retail_customer_count_prev)",
+      "inputs": ["retail_deposit", "retail_deposit_prev", "retail_customer_count", "retail_customer_count_prev"],
+      "inputs_detail": {
+        "retail_deposit": {"category": "leaf", "source_section": "D"},
+        "retail_deposit_prev": {"category": "leaf", "source_section": "D"},
+        "retail_customer_count": {"category": "leaf", "source_section": "D"},
+        "retail_customer_count_prev": {"category": "leaf", "source_section": "D"}
+      },
+      "output_unit": "百万元/户",
+      "data_dependency_note": "客户数数据经常缺失",
+      "watch_flags": {"threshold": "< 0", "severity": "medium"}
+    },
+    "MCC": {
+      "name_zh": "边际客户成本 (原创)",
+      "methodology_chapter": "ch8.4",
+      "expression": "(admin_expenses - admin_expenses_prev) / (corporate_customer_count + retail_customer_count - corporate_customer_count_prev - retail_customer_count_prev)",
+      "inputs": ["admin_expenses", "admin_expenses_prev", "corporate_customer_count", "corporate_customer_count_prev", "retail_customer_count", "retail_customer_count_prev"],
+      "inputs_detail": {
+        "admin_expenses": {"category": "leaf", "source_section": "A"},
+        "admin_expenses_prev": {"category": "leaf", "source_section": "A"},
+        "corporate_customer_count": {"category": "leaf", "source_section": "D"},
+        "corporate_customer_count_prev": {"category": "leaf", "source_section": "D"},
+        "retail_customer_count": {"category": "leaf", "source_section": "D"},
+        "retail_customer_count_prev": {"category": "leaf", "source_section": "D"}
+      },
+      "output_unit": "百万元/户",
+      "data_dependency_note": "需扣除折旧摊销 — 若无法获取折旧数据则标记NOT_FOUND",
+      "watch_flags": {"threshold": "> 1.0", "severity": "medium", "description": "获客成本上升 — 边际效率恶化"}
+    },
+    "marginal_interest_efficiency": {
+      "name_zh": "边际利息效率 (原创: Δ利息收入/Δ利息支出)",
+      "methodology_chapter": "ch8.5",
+      "expression": "(interest_income - interest_income_prev) / (interest_expense - interest_expense_prev)",
+      "inputs": ["interest_income", "interest_income_prev", "interest_expense", "interest_expense_prev"],
+      "inputs_detail": {
+        "interest_income": {"category": "leaf", "source_section": "A"},
+        "interest_income_prev": {"category": "leaf", "source_section": "A"},
+        "interest_expense": {"category": "leaf", "source_section": "A"},
+        "interest_expense_prev": {"category": "leaf", "source_section": "A"}
+      },
+      "output_unit": "ratio",
+      "red_flags": {"threshold": "< 0.5", "severity": "high", "description": "每多付1元利息仅收回<0.5元 — 以价换量至极限"},
+      "watch_flags": {"threshold": "< 1.0", "severity": "medium", "description": "边际利息效率 < 1.0 — 规模不经济"}
+    },
+    "marginal_interest_income_output": {
+      "name_zh": "边际利息收入产出 (原创: Δ利息收入/Δ利息支出)",
+      "methodology_chapter": "ch9.5",
+      "expression": "(interest_income - interest_income_prev) / (interest_expense - interest_expense_prev)",
+      "inputs": ["interest_income", "interest_income_prev", "interest_expense", "interest_expense_prev"],
+      "inputs_detail": {
+        "interest_income": {"category": "leaf", "source_section": "A"},
+        "interest_income_prev": {"category": "leaf", "source_section": "A"},
+        "interest_expense": {"category": "leaf", "source_section": "A"},
+        "interest_expense_prev": {"category": "leaf", "source_section": "A"}
+      },
+      "output_unit": "ratio",
+      "watch_flags": {"threshold": "< 1.5", "severity": "medium", "description": "边际利息产出下降 — 规模扩张效益递减"}
+    },
+    "marginal_asset_output": {
+      "name_zh": "边际资产产出 (原创: Δ营收/Δ总资产)",
+      "methodology_chapter": "ch9.5",
+      "expression": "(operating_income - operating_income_prev) / (total_assets - total_assets_prev) * 100",
+      "inputs": ["operating_income", "operating_income_prev", "total_assets", "total_assets_prev"],
+      "inputs_detail": {
+        "operating_income": {"category": "leaf", "source_section": "A"},
+        "operating_income_prev": {"category": "leaf", "source_section": "A"},
+        "total_assets": {"category": "leaf", "source_section": "A"},
+        "total_assets_prev": {"category": "leaf", "source_section": "A"}
+      },
+      "output_unit": "%",
+      "red_flags": {"threshold": "< 0", "severity": "high", "description": "边际资产产出为负 — 扩表是价值毁灭性的"},
+      "watch_flags": {"threshold": "< 1.0", "severity": "medium", "description": "边际资产产出 < 1% — 低效扩张"}
+    },
+    "marginal_credit_cost": {
+      "name_zh": "边际信用成本 (原创: Δ减值损失/Δ贷款总额)",
+      "methodology_chapter": "ch9.5",
+      "expression": "(provision_expense - provision_expense_prev) / (total_loans - total_loans_prev) * 100",
+      "inputs": ["provision_expense", "provision_expense_prev", "total_loans", "total_loans_prev"],
+      "inputs_detail": {
+        "provision_expense": {"category": "leaf", "source_section": "A"},
+        "provision_expense_prev": {"category": "leaf", "source_section": "A"},
+        "total_loans": {"category": "leaf", "source_section": "A"},
+        "total_loans_prev": {"category": "leaf", "source_section": "A"}
+      },
+      "output_unit": "%",
+      "red_flags": {"threshold": "> 3.0", "severity": "high", "description": "新增贷款信用成本 > 3% — 新增贷款风险极高"},
+      "watch_flags": {"threshold": "> 1.5", "severity": "medium"}
+    },
+    "marginal_deposit_cost_efficiency": {
+      "name_zh": "边际存款成本效率 (原创: Δ存款/Δ利息支出)",
+      "methodology_chapter": "ch10",
+      "expression": "(total_deposits - total_deposits_prev) / (interest_expense - interest_expense_prev)",
+      "inputs": ["total_deposits", "total_deposits_prev", "interest_expense", "interest_expense_prev"],
+      "inputs_detail": {
+        "total_deposits": {"category": "leaf", "source_section": "A"},
+        "total_deposits_prev": {"category": "leaf", "source_section": "A"},
+        "interest_expense": {"category": "leaf", "source_section": "A"},
+        "interest_expense_prev": {"category": "leaf", "source_section": "A"}
+      },
+      "output_unit": "ratio",
+      "red_flags": {"threshold": "< 0", "severity": "medium", "description": "边际存款效率为负 — 利息支出上升但存款下降"},
+      "watch_flags": {"threshold": "< 5", "severity": "low", "description": "每多付1元利息获得存款 < 5元 — 存款竞争加剧"}
+    },
+    "marginal_risk_output": {
+      "name_zh": "边际风险产出 (原创: Δ利息收入/Δ非正常贷款)",
+      "methodology_chapter": "ch13.3",
+      "expression": "(interest_income - interest_income_prev) / ((npl_balance + sml_balance) - (npl_balance_prev + sml_balance_prev))",
+      "inputs": ["interest_income", "interest_income_prev", "npl_balance", "npl_balance_prev", "sml_balance", "sml_balance_prev"],
+      "inputs_detail": {
+        "interest_income": {"category": "leaf", "source_section": "A"},
+        "interest_income_prev": {"category": "leaf", "source_section": "A"},
+        "npl_balance": {"category": "leaf", "source_section": "B"},
+        "npl_balance_prev": {"category": "leaf", "source_section": "B"},
+        "sml_balance": {"category": "leaf", "source_section": "B"},
+        "sml_balance_prev": {"category": "leaf", "source_section": "B"}
+      },
+      "output_unit": "ratio",
+      "red_flags": {"threshold": "< 0", "severity": "high", "description": "非正常贷款增加但利息收入下降 — 风险定价严重失效"},
+      "watch_flags": {"threshold": "< 1.0", "severity": "medium"}
+    },
+    "interest_income_ratio_check": {
+      "name_zh": "利息收入比率法检测 (原创: 隐藏坏账检测)",
+      "methodology_chapter": "ch7",
+      "expression": "(interest_income - interest_income_prev) / interest_income_prev * 100 vs loan_growth — if interest_income_growth < loan_growth by > 5pp, flag POSITIVE",
+      "inputs": ["interest_income", "interest_income_prev", "total_loans", "total_loans_prev"],
+      "inputs_detail": {
+        "interest_income": {"category": "leaf", "source_section": "A"},
+        "interest_income_prev": {"category": "leaf", "source_section": "A"},
+        "total_loans": {"category": "leaf", "source_section": "A"},
+        "total_loans_prev": {"category": "leaf", "source_section": "A"}
+      },
+      "output_unit": "boolean",
+      "red_flags": {"threshold": "true", "severity": "medium", "description": "利息收入增速 < 贷款增速超5pp — 部分贷款可能已停止付息"}
+    },
+    "HHI_industry": {
+      "name_zh": "行业贷款HHI集中度",
+      "methodology_chapter": "ch13.4",
+      "expression": "sum of (industry_i_pct / 100)^2 for top 10 industries",
+      "inputs": ["industry_concentration_top1", "industry_concentration_top2", "industry_concentration_top3", "industry_concentration_top4", "industry_concentration_top5", "industry_concentration_top6", "industry_concentration_top7", "industry_concentration_top8", "industry_concentration_top9", "industry_concentration_top10"],
+      "inputs_detail": {
+        "industry_concentration": {"category": "leaf", "source_section": "D", "note": "前十大行业贷款占比(%)"}
+      },
+      "output_unit": "index",
+      "red_flags": {"threshold": "> 0.25", "severity": "medium", "description": "HHI > 0.25 — 行业集中度过高"},
+      "watch_flags": {"threshold": "> 0.15", "severity": "low"}
+    },
+    "macro_strategy_alignment": {
+      "name_zh": "宏观-策略适配评分 (原创)",
+      "methodology_chapter": "ch1/8/17/21",
+      "expression": "qualitative_score_0_100",
+      "inputs": ["macro_cycle_position", "policy_alignment", "regional_fit", "model_resilience"],
+      "inputs_detail": {
+        "macro_cycle_position": {"category": "qualitative", "note": "C8a: 周期定位 — 银行在顺/逆周期"},
+        "policy_alignment": {"category": "qualitative", "note": "C8b: 政策对齐度"},
+        "regional_fit": {"category": "qualitative", "note": "C8c: 区域经济匹配度"},
+        "model_resilience": {"category": "qualitative", "note": "C8d: 业务模式韧性"}
+      },
+      "output_unit": "score (0-100)",
+      "note": "本指标为定性评分,需spawn基于C8a-C8d四个维度综合判断。公式不出数值, 由spawn输出0-100分数并注明四个子维度得分。",
+      "red_flags": {"threshold": "< 40", "severity": "high", "description": "宏观-策略严重脱节"},
+      "watch_flags": {"threshold": "< 60", "severity": "medium"}
+    },
+    "revenue_per_employee": {
+      "name_zh": "人均营收",
+      "methodology_chapter": "ch6.2",
+      "expression": "operating_income / employee_count",
+      "inputs": ["operating_income", "employee_count"],
+      "inputs_detail": {
+        "operating_income": {"category": "leaf", "source_section": "A"},
+        "employee_count": {"category": "leaf", "source_section": "F"}
+      },
+      "output_unit": "百万元/人"
+    },
+    "related_party_to_equity": {
+      "name_zh": "关联交易/净资产比",
+      "methodology_chapter": "ch16.1",
+      "expression": "related_party_loans / total_equity * 100",
+      "inputs": ["related_party_loans", "total_equity"],
+      "inputs_detail": {
+        "related_party_loans": {"category": "leaf", "source_section": "D"},
+        "total_equity": {"category": "leaf", "source_section": "A"}
+      },
+      "output_unit": "%",
+      "red_flags": {"threshold": "> 15", "severity": "high", "description": "关联交易 > 15%净资产 — 集中度风险极高"},
+      "watch_flags": {"threshold": "> 8", "severity": "medium"}
+    },
+    "industry_concentration_hhi": {
+      "name_zh": "行业贷款集中度(HHI)",
+      "methodology_chapter": "ch13.4",
+      "expression": "sum of squares of top industry percentages",
+      "inputs": ["industry_concentration_top1", "industry_concentration_top2", "industry_concentration_top3"],
+      "inputs_detail": {
+        "industry_concentration_top1": {"category": "leaf", "source_section": "D"},
+        "industry_concentration_top2": {"category": "leaf", "source_section": "D"},
+        "industry_concentration_top3": {"category": "leaf", "source_section": "D"}
+      },
+      "output_unit": "index",
+      "red_flags": {"threshold": "> 2500", "severity": "medium", "description": "HHI > 2500 — 行业集中度过高"},
+      "watch_flags": {"threshold": "> 1500", "severity": "low"}
+    },
+    "corporate_loan_growth": {
+      "name_zh": "对公贷款增速",
+      "methodology_chapter": "ch18.1",
+      "expression": "(corporate_loans - corporate_loans_prev) / corporate_loans_prev * 100",
+      "inputs": ["corporate_loans", "corporate_loans_prev"],
+      "inputs_detail": {
+        "corporate_loans": {"category": "leaf", "source_section": "D"},
+        "corporate_loans_prev": {"category": "leaf", "source_section": "D"}
+      },
+      "output_unit": "%",
+      "watch_flags": {"threshold": "> 25", "severity": "medium", "description": "对公贷款增速 > 25% — 激进扩张"}
+    },
+    "total_overdue_to_npl": {
+      "name_zh": "逾期总额/不良贷款 (含90天内)",
+      "methodology_chapter": "ch12.2",
+      "expression": "(overdue_90d_balance + overdue_lt90d_balance) / npl_balance * 100",
+      "inputs": ["overdue_90d_balance", "overdue_lt90d_balance", "npl_balance"],
+      "inputs_detail": {
+        "overdue_90d_balance": {"category": "leaf", "source_section": "D"},
+        "overdue_lt90d_balance": {"category": "leaf", "source_section": "D", "note": "逾期90天内, 如不可得则用0"},
+        "npl_balance": {"category": "leaf", "source_section": "B"}
+      },
+      "output_unit": "%",
+      "red_flags": {"threshold": "> 150", "severity": "high", "description": "逾期总额/不良 > 150% — 存在大量短期逾期可能转化为不良"},
+      "watch_flags": {"threshold": "> 120", "severity": "medium"}
+    }
+  },
+  "leaf_inventory": [
+    "cet1_net_reported",
+    "cet1_ratio_prev",
+    "tier1_capital",
+    "total_capital",
+    "dividend_amount",
+    "rwa_credit",
+    "rwa_market",
+    "rwa_operational",
+    "net_profit",
+    "net_profit_prev",
+    "total_assets",
+    "total_assets_prev",
+    "total_equity",
+    "total_equity_prev",
+    "total_loans",
+    "total_loans_prev",
+    "total_deposits",
+    "total_deposits_prev",
+    "operating_income",
+    "operating_income_prev",
+    "interest_income",
+    "interest_income_prev",
+    "interest_expense",
+    "interest_expense_prev",
+    "fee_income",
+    "fee_expense",
+    "operating_expenses",
+    "admin_expenses",
+    "admin_expenses_prev",
+    "provision_expense",
+    "provision_expense_prev",
+    "investment_securities",
+    "investment_securities_prev",
+    "npl_balance",
+    "npl_balance_prev",
+    "provision_balance",
+    "sml_balance",
+    "sml_balance_prev",
+    "lcr_reported",
+    "nsfr_reported",
+    "leverage_ratio"
+  ],
+  "deep_metrics_on_demand": [
+    "overdue_90d_balance",
+    "overdue_lt90d_balance",
+    "overdue_total",
+    "loan_write_offs",
+    "sml_migration",
+    "substandard_balance_prev",
+    "substandard_migration",
+    "corporate_loans",
+    "corporate_loans_prev",
+    "corporate_deposit",
+    "corporate_deposit_prev",
+    "corporate_customer_count",
+    "corporate_customer_count_prev",
+    "retail_loans",
+    "retail_loans_prev",
+    "retail_deposit",
+    "retail_deposit_prev",
+    "retail_customer_count",
+    "retail_customer_count_prev",
+    "industry_concentration_top1",
+    "industry_concentration_top2",
+    "industry_concentration_top3",
+    "employee_count",
+    "branch_count",
+    "board_size",
+    "independent_director_count",
+    "female_board_ratio",
+    "executive_compensation_total",
+    "related_party_loans",
+    "derivative_notional"
+  ],
+  "_deep_metrics_note": "deep_metrics_on_demand 不在 L0d 预提取范围。这些指标来自 Section D/E/F，由 L1 定量分析师在触发 curiosity 时按需从 structured.md 提取。",
+  "topological_order": [
+    [
+      "cet1_net_reported", "cet1_ratio_prev", "tier1_capital", "total_capital",
+      "dividend_amount", "rwa_credit", "rwa_market", "rwa_operational",
+      "net_profit", "net_profit_prev", "total_assets", "total_assets_prev",
+      "total_equity", "total_equity_prev", "total_loans", "total_loans_prev",
+      "total_deposits", "total_deposits_prev",
+      "operating_income", "operating_income_prev",
+      "interest_income", "interest_income_prev",
+      "interest_expense", "interest_expense_prev",
+      "fee_income", "fee_expense", "operating_expenses",
+      "admin_expenses", "admin_expenses_prev",
+      "provision_expense", "provision_expense_prev",
+      "investment_securities", "investment_securities_prev",
+      "npl_balance", "npl_balance_prev", "provision_balance",
+      "sml_balance", "sml_balance_prev",
+      "lcr_reported", "nsfr_reported", "leverage_ratio"
+    ],
+    ["RWA_total", "total_equity_avg", "total_assets_avg", "total_loans_avg",
+     "PPOP", "net_interest_income", "net_fee_income", "CET1_net_before_dividend"],
+    ["CET1_ratio", "cet1_delta", "CAR_total", "capital_quality_ratio",
+     "ROE_fy", "ROE_annualized", "ROA", "cost_income_ratio", "cost_income_ratio_narrow",
+     "NPL_ratio", "provision_coverage", "provision_to_ppop",
+     "loan_deposit_ratio", "loan_to_asset_ratio", "deposit_to_asset_ratio",
+     "overdue90_to_npl", "DPR", "deposit_growth", "corporate_deposit_growth",
+     "loan_growth", "retail_loan_growth", "revenue_growth", "profit_growth",
+     "equity_to_assets", "revenue_per_employee", "fee_income_ratio",
+     "corporate_loan_ratio", "retail_deposit_ratio",
+     "CDP_capital", "industry_concentration_hhi", "leverage_gap", "rwa_density",
+     "related_party_to_equity", "corporate_loan_growth", "total_overdue_to_npl",
+     "sml_migration_rate", "substandard_migration_rate",
+     "marginal_interest_efficiency", "marginal_interest_income_output",
+     "marginal_asset_output", "marginal_credit_cost",
+     "marginal_deposit_cost_efficiency", "marginal_risk_output",
+     "interest_income_ratio_check"],
+    ["npl_formation_rate", "dividend_stability", "hidden_npl_flag",
+     "interest_earning_assets_avg", "overdue_to_npl_ratio"],
+    ["NIM"],
+    ["MDpst_bb", "retail_MDpst", "MCC"],
+    ["macro_strategy_alignment", "HHI_industry"]
+  ]
+}

@@ -1,0 +1,13 @@
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.env
+.venv/
+venv/
+data/
+results/
+.DS_Store
+*.swp
+*.swo
+.claude/

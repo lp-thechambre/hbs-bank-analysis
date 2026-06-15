@@ -1,0 +1,310 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "HBS-Bank-Depth KPI Verification Rubric",
+  "description": "Per-layer quality checks for AI supervisor verification gates. Each layer defines checks, pass threshold, and max redo attempts.",
+  "layers": {
+    "L0c_structurize": {
+      "description": "PDF → structured.md extraction quality",
+      "pass_threshold": 3,
+      "max_redo": 2,
+      "checks": [
+        {
+          "id": "file_exists",
+          "description": "structured.md 存在且文件大小 > 0 bytes",
+          "check": "structured.md exists and size > 0",
+          "fatal": true
+        },
+        {
+          "id": "provenance",
+          "description": "Section G 数据来源标记为 pdf_extraction，非 ai_knowledge_base",
+          "check": "data provenance in Section G is 'pdf_extraction', not 'ai_knowledge_base'",
+          "fatal": true
+        },
+        {
+          "id": "section_count",
+          "description": "Section A-G 至少有 5 个 section 有实质性内容",
+          "check": "at least 5 of Sections A-G contain substantive content (not just headers)",
+          "fatal": false
+        },
+        {
+          "id": "table_data",
+          "description": "Section A 财务表格至少包含 3 行数据",
+          "check": "Section A contains at least 3 rows of financial data in table format",
+          "fatal": false
+        },
+        {
+          "id": "no_error_message",
+          "description": "文件内容不是错误消息或空模板",
+          "check": "content does not contain error messages like 'No PDF text extraction succeeded'",
+          "fatal": true
+        }
+      ]
+    },
+    "L0d_leaf_extraction": {
+      "description": "Leaf metric value extraction quality",
+      "pass_threshold": 3,
+      "max_redo": 2,
+      "checks": [
+        {
+          "id": "file_exists",
+          "description": "leaf_values.json 存在且为有效 JSON",
+          "check": "leaf_values.json exists and is valid JSON",
+          "fatal": true
+        },
+        {
+          "id": "provenance",
+          "description": "data_provenance.source = pdf_extraction",
+          "check": "data_provenance.source is 'pdf_extraction', not 'ai_knowledge_base'",
+          "fatal": true
+        },
+        {
+          "id": "metric_count",
+          "description": "values 对象至少包含 12 个指标",
+          "check": "values object has >= 12 entries",
+          "fatal": false
+        },
+        {
+          "id": "completeness",
+          "description": "提取完整度 >= 0.5",
+          "check": "completeness ratio (non-null / total) >= 0.5",
+          "fatal": false
+        },
+        {
+          "id": "unit_consistency",
+          "description": "金额类指标单位一致（全部归一到百万元）",
+          "check": "monetary values are normalized to consistent unit (百万元)",
+          "fatal": false
+        }
+      ]
+    },
+    "L1_bank_scan": {
+      "description": "Per-bank quantitative scan + text diff quality",
+      "pass_threshold": 4,
+      "max_redo": 2,
+      "checks": [
+        {
+          "id": "metric_count",
+          "description": "computed_metrics >= 15 项（覆盖率）",
+          "check": "computed_metrics object has >= 15 entries",
+          "fatal": false
+        },
+        {
+          "id": "text_diff_signals",
+          "description": "text_diff_signals 数组非空，至少 1 条含 cross_ref",
+          "check": "text_diff_signals array is non-empty with at least 1 entry containing cross_ref field",
+          "fatal": false
+        },
+        {
+          "id": "curiosity_flags_count",
+          "description": "curiosity_flags >= 3 条，至少 1 条 severity=high",
+          "check": "curiosity_flags has >= 3 entries with at least 1 severity='high'",
+          "fatal": false
+        },
+        {
+          "id": "completeness",
+          "description": "completeness >= 0.6",
+          "check": "completeness field >= 0.6",
+          "fatal": true
+        },
+        {
+          "id": "provenance",
+          "description": "data_provenance.source = pdf_extraction",
+          "check": "data_provenance.source is 'pdf_extraction'",
+          "fatal": true
+        },
+        {
+          "id": "schema_valid",
+          "description": "输出通过 output_schema.json §PerBankScan 校验",
+          "check": "output validates against output_schema.json PerBankScan schema",
+          "fatal": true
+        },
+        {
+          "id": "schema_field_names",
+          "description": "关键字段名与output_schema一致 (severity非confidence, key_findings非qualitative_signals)",
+          "check": "key field names match output_schema definitions — no schema drift",
+          "fatal": false
+        },
+        {
+          "id": "edge_handoff",
+          "description": "edge_handoff 数组非空，至少 1 条具体搜索主题",
+          "check": "edge_handoff has >= 1 concrete search topic (not generic)",
+          "fatal": false
+        }
+      ]
+    },
+    "L2_edge_search": {
+      "description": "External edge signal search quality",
+      "pass_threshold": 3,
+      "max_redo": 1,
+      "checks": [
+        {
+          "id": "search_executed",
+          "description": "实际搜索执行次数 >= budget 的 50%",
+          "check": "searches_completed >= budget * 0.5 (or search_budget_used >= 10 for default budget 20)",
+          "fatal": false
+        },
+        {
+          "id": "signal_count",
+          "description": "edge_markers signals 数组 >= 5 条",
+          "check": "signals array in edge_markers.json has >= 5 entries",
+          "fatal": false
+        },
+        {
+          "id": "source_url_present",
+          "description": "每条 signal 有非空 source_url",
+          "check": "every signal has a non-empty source_url field",
+          "fatal": true
+        },
+        {
+          "id": "not_template",
+          "description": "mosaic_themes 不存在或每条来自实际搜索结果",
+          "check": "mosaic_themes either absent or each theme backed by search results",
+          "fatal": true
+        },
+        {
+          "id": "search_query_logged",
+          "description": "每次搜索的 query 和结果摘要被记录",
+          "check": "each search has a recorded query string and result summary",
+          "fatal": false
+        }
+      ]
+    },
+    "L3_qual_deep_dive": {
+      "description": "Per-bank qualitative deep reading quality",
+      "pass_threshold": 4,
+      "max_redo": 2,
+      "checks": [
+        {
+          "id": "findings_count",
+          "description": "key_findings >= 5 条，每条含 source_section",
+          "check": "key_findings has >= 5 entries, each with source_section field",
+          "fatal": false
+        },
+        {
+          "id": "narrative_quality",
+          "description": "narrative >= 100 字符，非模板填充",
+          "check": "narrative field >= 100 chars AND not a template placeholder",
+          "fatal": true
+        },
+        {
+          "id": "not_placeholder",
+          "description": "不包含 '{银行名} business strategy' 等占位符文本",
+          "check": "no strings match placeholder patterns like '{银行名} business strategy: focus areas per annual report'",
+          "fatal": true
+        },
+        {
+          "id": "management_assessment",
+          "description": "strategy_clarity/tone/credibility 均有具体评估",
+          "check": "all 3 management_assessment dimensions have specific evaluations (not generic)",
+          "fatal": true
+        },
+        {
+          "id": "provenance",
+          "description": "data_provenance.source = pdf_extraction",
+          "check": "data_provenance.source is 'pdf_extraction'",
+          "fatal": true
+        },
+        {
+          "id": "flags_addressed",
+          "description": "L1 qual_handoff 中的所有问题均被回应",
+          "check": "all L1 qual_handoff questions are addressed in flags_resolved or flags_escalated",
+          "fatal": false
+        }
+      ]
+    },
+    "L5a_vice": {
+      "description": "Per-bank VOH scoring — Vice analyst (1 bank/spawn)",
+      "pass_threshold": 4,
+      "max_redo": 1,
+      "checks": [
+        {
+          "id": "vice_sub_scores",
+          "description": "每家银行 per_bank_voh.json 包含全部 6 个 sub_scores (dpr_stability, dividend_resilience, cdp, customer_quality, marginal_profitability, long_termism)",
+          "check": "each per_bank_voh.json has all 6 sub_scores with score + rationale",
+          "fatal": true
+        },
+        {
+          "id": "vice_depth_report",
+          "description": "depth_report.md >= 2000 字符",
+          "check": "depth_report.md file >= 2000 characters",
+          "fatal": true
+        },
+        {
+          "id": "vice_curiosity_specificity",
+          "description": "curiosity_signals 引用具体指标或事件（非泛泛风险提示）",
+          "check": "each curiosity_signal references a specific metric, event, or trend with direction + magnitude",
+          "fatal": true
+        },
+        {
+          "id": "vice_no_placeholders",
+          "description": "无模板占位符（如 {银行名}）",
+          "check": "no placeholder strings in output files",
+          "fatal": true
+        },
+        {
+          "id": "vice_narrative_section",
+          "description": "depth_report.md 包含 narrative 段落",
+          "check": "depth_report.md has a narrative section",
+          "fatal": false
+        },
+        {
+          "id": "vice_cdp_diversity_source",
+          "description": "CDP 和 Diversity 分数来源标注为 L0e 确定性计算",
+          "check": "cdp and diversity sub_scores have source: 'L0e'",
+          "fatal": true
+        }
+      ]
+    },
+    "L5b_chief": {
+      "description": "Cross-bank synthesis — Chief editor (1 global spawn)",
+      "pass_threshold": 3,
+      "max_redo": 1,
+      "checks": [
+        {
+          "id": "chief_ranking_table",
+          "description": "synthesis_report.md 包含所有银行的完整 VOH 排名表",
+          "check": "VOH ranking table includes all banks with all component scores",
+          "fatal": true
+        },
+        {
+          "id": "chief_cross_bank_themes",
+          "description": ">= 3 个跨银行主题，有验证注释",
+          "check": ">= 3 cross-bank themes each with validation note",
+          "fatal": true
+        },
+        {
+          "id": "chief_recon_suggestions",
+          "description": ">= 3 个侦察建议，包含具体查询和数据来源",
+          "check": ">= 3 reconnaissance suggestions with specific query + data source",
+          "fatal": true
+        },
+        {
+          "id": "chief_schema_valid",
+          "description": "synthesis_report.json 通过 JSON schema 校验",
+          "check": "synthesis_report.json validates against output_schema.json",
+          "fatal": true
+        },
+        {
+          "id": "chief_report_length",
+          "description": "synthesis_report.md >= 2000 字符",
+          "check": "synthesis_report.md >= 2000 characters",
+          "fatal": false
+        },
+        {
+          "id": "chief_no_score_override",
+          "description": "Chief 未修改 Vice 的分数（标记在 Edge Cases 中可以，直接覆盖不行）",
+          "check": "VOH scores in synthesis_report.json match per_bank_voh.json",
+          "fatal": true
+        }
+      ]
+    }
+  },
+  "template_detection_patterns": [
+    "{银行名} business strategy: focus areas per annual report",
+    "{银行名} risk management framework",
+    "{银行名} governance structure",
+    "Analysis of {银行名} risk disclosures from latest annual report",
+    "Board and executive information for {银行名}",
+    "Full qualitative analysis requires spawn-based deep reading"
+  ]
+}
