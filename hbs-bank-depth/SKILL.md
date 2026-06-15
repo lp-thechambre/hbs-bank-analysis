@@ -262,7 +262,7 @@ The main session acts as the pipeline dispatcher, following the detailed executi
 | Bank Layer 3 spawn timeout | Bank uses L1 markers for L5a/L5b, qualitative profile missing |
 | Layer 2 Edge spawn timeout | Skip edge signals, L5a/L5b based on L1+L3 only |
 | Bank L5a Vice spawn timeout | Mark bank L5a_DEGRADED, Chief uses neutral proxy scores |
-| Full pipeline timeout (2 hours) | Produce best-effort results from completed layers |
+| Full pipeline timeout (4 hours) | Produce best-effort results from completed layers |
 
 ---
 
@@ -283,7 +283,7 @@ All `web_fetch`/`web_search` MUST use headless mode. Prefer `exec python3 script
 
 ## Configuration
 
-See `assets/batch_config.json`: batch_size=3, pipeline_timeout=2h, spawn_timeout=10m, edge_search_budget=20.
+See `assets/batch_config.json`: batch_size=3, pipeline_timeout=4h, spawn_timeout=20m, edge_search_budget=20.
 
 ---
 
