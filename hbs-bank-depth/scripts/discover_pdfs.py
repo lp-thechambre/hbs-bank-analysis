@@ -1,12 +1,17 @@
 #!/usr/bin/env python3
-"""L0a: Fetch announcements from Cninfo (primary) + Eastmoney (fallback).
+"""L0a: Fetch raw announcements + prefilter candidates for AI triage.
 
-3-tier strategy:
-  1. Cninfo API → classify → auto-select best match per doc_type
-  2. Eastmoney API → fill gaps where Cninfo is missing
-  3. Output unified pdf_manifest.json with source annotation
+Division of labor:
+  - SCRIPT: Fetch raw API data, keyword-group into candidate pools.
+  - AI:     From candidate pools + raw fallback, select the 6 target docs
+            and write pdf_manifest.json.
 
-No AI review step needed — classification + selection is fully automated.
+Outputs:
+  - {code}/raw_announcements.json   — Full Cninfo + Eastmoney listings (AI fallback)
+  - pdf_manifest_candidates.json     — Keyword-prefiltered pools grouped by category
+                                       (annual_report / quarterly_report / pillar3)
+
+The script does NOT auto-select — AI selects the final 6 documents.
 """
 
 import argparse
@@ -39,15 +44,6 @@ CNINFO_MAX_PAGES = 5
 EASTMONEY_MAX_PAGES = 5
 
 CNINFO_ORG_ID_URL = "http://www.cninfo.com.cn/new/data/szse_stock.json"
-
-DOC_TYPES = [
-    "latest_annual_report",
-    "latest_quarter_report",
-    "prev_annual_report",
-    "latest_annual_pillar3",
-    "prev_annual_pillar3",
-    "latest_quarter_pillar3",
-]
 
 
 def random_delay(base: float) -> float:
@@ -123,7 +119,10 @@ def fetch_cninfo_announcements(stock_code: str, org_id: str) -> list[dict]:
 
 
 def classify_cninfo(items: list[dict]) -> dict:
-    """Classify Cninfo announcements into annual/quarterly/pillar3."""
+    """Classify Cninfo announcements into annual/quarterly/pillar3 pools.
+
+    Returns candidate pools only — no selection. AI chooses from these pools.
+    """
     pools = {"annual_report": [], "quarterly_report": [], "pillar3": []}
 
     for item in items:
@@ -142,7 +141,6 @@ def classify_cninfo(items: list[dict]) -> dict:
             "pdf_url": f"https://static.cninfo.com.cn/{adj_url}",
         }
 
-        # Annual report (exclude quarterly/semi-annual/pillar3)
         if any(kw in title for kw in ["年度报告全文", "年报全文", "年年度报告", "年度报告"]):
             if not any(kw in title for kw in [
                 "摘要", "补充", "更正", "英文", "发行", "审核意见",
@@ -150,7 +148,6 @@ def classify_cninfo(items: list[dict]) -> dict:
             ]):
                 pools["annual_report"].append(entry)
 
-        # Quarterly report
         if any(kw in title for kw in [
             "季度报告全文", "半年报告全文", "半年度报告全文",
             "第一季度报告", "第二季度报告", "第三季度报告",
@@ -159,7 +156,6 @@ def classify_cninfo(items: list[dict]) -> dict:
             if "摘要" not in title:
                 pools["quarterly_report"].append(entry)
 
-        # Pillar 3
         if any(kw in title.lower() for kw in [
             "资本充足率", "第三支柱", "pillar 3", "pillar3",
             "巴塞尔", "basel", "资本管理",
@@ -171,114 +167,8 @@ def classify_cninfo(items: list[dict]) -> dict:
     return pools
 
 
-def select_cninfo_docs(pools: dict, code: str) -> dict:
-    """Auto-select the correct document for each doc_type from Cninfo pools.
-
-    Selection logic (by announcementTime, which is epoch ms):
-      - latest_annual: most recent 年度报告 from 2025 or 2024 (current year annual)
-      - prev_annual: second most recent 年度报告 or from 2023/2024
-      - latest_quarter: most recent 季度报告 (Q1 2026 ≥ 2026-01-01)
-      - pillar3 matching annual year
-    """
-    selected = {}
-
-    def _by_year(items, year_str):
-        return [i for i in items if year_str in i.get("title", "")]
-
-    annuals = pools.get("annual_report", [])
-    quarterlies = pools.get("quarterly_report", [])
-    pillar3s = pools.get("pillar3", [])
-
-    # Latest annual: pick most recent by time (typically 2025 annual published in 2026)
-    if annuals:
-        selected["latest_annual_report"] = {
-            "status": "available", "source": "cninfo",
-            "title": annuals[0]["title"],
-            "type": "年度报告全文",
-            "url": annuals[0]["pdf_url"],
-            "cninfo_adjunct_url": annuals[0]["adjunctUrl"],
-            "cninfo_announcement_id": annuals[0]["announcementId"],
-            "cninfo_announcement_time": annuals[0]["announcementTime"],
-        }
-        # Prev annual: second most recent
-        if len(annuals) >= 2:
-            selected["prev_annual_report"] = {
-                "status": "available", "source": "cninfo",
-                "title": annuals[1]["title"],
-                "type": "年度报告全文",
-                "url": annuals[1]["pdf_url"],
-                "cninfo_adjunct_url": annuals[1]["adjunctUrl"],
-                "cninfo_announcement_id": annuals[1]["announcementId"],
-                "cninfo_announcement_time": annuals[1]["announcementTime"],
-            }
-
-    # Latest quarterly: most recent (should be Q1 2026)
-    if quarterlies:
-        selected["latest_quarter_report"] = {
-            "status": "available", "source": "cninfo",
-            "title": quarterlies[0]["title"],
-            "type": "季度报告全文",
-            "url": quarterlies[0]["pdf_url"],
-            "cninfo_adjunct_url": quarterlies[0]["adjunctUrl"],
-            "cninfo_announcement_id": quarterlies[0]["announcementId"],
-            "cninfo_announcement_time": quarterlies[0]["announcementTime"],
-        }
-
-    # Pillar 3: match years to annual reports
-    if annuals and pillar3s:
-        # Latest annual year from title (e.g. "2025年度报告" → "2025")
-        def _extract_year(title):
-            import re
-            m = re.search(r"(\d{4})", title)
-            return m.group(1) if m else ""
-
-        for p3 in pillar3s:
-            p3_year = _extract_year(p3.get("title", ""))
-            p3_title = p3.get("title", "")
-
-            # Match latest annual year
-            if annuals and p3_year == _extract_year(annuals[0]["title"]):
-                if "latest_annual_pillar3" not in selected:
-                    selected["latest_annual_pillar3"] = {
-                        "status": "available", "source": "cninfo",
-                        "title": p3_title,
-                        "type": "年度资本充足率报告",
-                        "url": p3["pdf_url"],
-                        "cninfo_adjunct_url": p3["adjunctUrl"],
-                        "cninfo_announcement_id": p3["announcementId"],
-                        "cninfo_announcement_time": p3["announcementTime"],
-                    }
-            # Match prev annual year
-            if len(annuals) >= 2 and p3_year == _extract_year(annuals[1]["title"]):
-                if "prev_annual_pillar3" not in selected:
-                    selected["prev_annual_pillar3"] = {
-                        "status": "available", "source": "cninfo",
-                        "title": p3_title,
-                        "type": "年度资本充足率报告",
-                        "url": p3["pdf_url"],
-                        "cninfo_adjunct_url": p3["adjunctUrl"],
-                        "cninfo_announcement_id": p3["announcementId"],
-                        "cninfo_announcement_time": p3["announcementTime"],
-                    }
-
-            # Quarterly pillar3: "第一季度第三支柱" or "Q1 pillar3"
-            if "第一季" in p3_title or "Q1" in p3_title.upper():
-                if "latest_quarter_pillar3" not in selected:
-                    selected["latest_quarter_pillar3"] = {
-                        "status": "available", "source": "cninfo",
-                        "title": p3_title,
-                        "type": "季度资本充足率报告",
-                        "url": p3["pdf_url"],
-                        "cninfo_adjunct_url": p3["adjunctUrl"],
-                        "cninfo_announcement_id": p3["announcementId"],
-                        "cninfo_announcement_time": p3["announcementTime"],
-                    }
-
-    return selected
-
-
 # ═══════════════════════════════════════════════════════════════════════════════════
-# Eastmoney fallback module (simplified — only for missing doc_types)
+# Eastmoney fallback module
 # ═══════════════════════════════════════════════════════════════════════════════════
 
 EM_API_BASE = "https://np-anotice-stock.eastmoney.com/api/security/ann"
@@ -287,10 +177,12 @@ PREFILTER_RULES = [
     ("annual_report", {
         "primary": ["年度报告全文", "年报全文"],
         "secondary": ["年度报告", "年报"],
-        "negative": ["摘要", "补充", "更正", "英文版", "发行", "审核意见", "问询函", "回复", "监管函", "处罚"],
+        "negative": ["摘要", "补充", "更正", "英文版", "发行", "审核意见",
+                     "问询函", "回复", "监管函", "处罚"],
     }),
     ("quarterly_report", {
-        "primary": ["一季度报告全文", "半年度报告全文", "三季度报告全文", "第一季报告全文", "半年报告全文", "第三季报告全文"],
+        "primary": ["一季度报告全文", "半年度报告全文", "三季度报告全文",
+                    "第一季报告全文", "半年报告全文", "第三季报告全文"],
         "secondary": ["一季报", "半年报", "三季报", "季度报告全文", "季度报告"],
         "negative": ["摘要", "补充", "更正"],
     }),
@@ -371,73 +263,11 @@ def classify_eastmoney(items: list[dict]) -> dict:
                 "match_score": info["score"],
                 "match_reasons": info["match_reasons"],
                 "pdf_url": f"https://pdf.dfcfw.com/pdf/H2_AN{art_code}_1.pdf",
+                "columns": item.get("columns", []),
             })
     for cat in pools:
         pools[cat].sort(key=lambda x: (x["match_score"], x["notice_date"]), reverse=True)
     return pools
-
-
-def select_eastmoney_docs(pools: dict, missing_types: set, code: str) -> dict:
-    """Fill missing doc_types from Eastmoney candidates."""
-    selected = {}
-
-    if "latest_annual_report" in missing_types and pools.get("annual_report"):
-        e = pools["annual_report"][0]
-        selected["latest_annual_report"] = {
-            "status": "available", "source": "eastmoney",
-            "title": e["title"], "type": "年度报告全文",
-            "url": e["pdf_url"], "art_code": e["art_code"],
-            "notice_date": e["notice_date"],
-        }
-
-    if "prev_annual_report" in missing_types and len(pools.get("annual_report", [])) >= 2:
-        e = pools["annual_report"][1]
-        selected["prev_annual_report"] = {
-            "status": "available", "source": "eastmoney",
-            "title": e["title"], "type": "年度报告全文",
-            "url": e["pdf_url"], "art_code": e["art_code"],
-            "notice_date": e["notice_date"],
-        }
-
-    if "latest_quarter_report" in missing_types and pools.get("quarterly_report"):
-        e = pools["quarterly_report"][0]
-        selected["latest_quarter_report"] = {
-            "status": "available", "source": "eastmoney",
-            "title": e["title"], "type": "季度报告全文",
-            "url": e["pdf_url"], "art_code": e["art_code"],
-            "notice_date": e["notice_date"],
-        }
-
-    if "latest_annual_pillar3" in missing_types and pools.get("pillar3"):
-        e = pools["pillar3"][0]
-        selected["latest_annual_pillar3"] = {
-            "status": "available", "source": "eastmoney",
-            "title": e["title"], "type": "年度资本充足率报告",
-            "url": e["pdf_url"], "art_code": e["art_code"],
-            "notice_date": e["notice_date"],
-        }
-
-    if "prev_annual_pillar3" in missing_types and len(pools.get("pillar3", [])) >= 2:
-        e = pools["pillar3"][1]
-        selected["prev_annual_pillar3"] = {
-            "status": "available", "source": "eastmoney",
-            "title": e["title"], "type": "年度资本充足率报告",
-            "url": e["pdf_url"], "art_code": e["art_code"],
-            "notice_date": e["notice_date"],
-        }
-
-    if "latest_quarter_pillar3" in missing_types and pools.get("pillar3"):
-        for e in pools["pillar3"]:
-            if "第一季" in e["title"] or "Q1" in e["title"].upper():
-                selected["latest_quarter_pillar3"] = {
-                    "status": "available", "source": "eastmoney",
-                    "title": e["title"], "type": "季度资本充足率报告",
-                    "url": e["pdf_url"], "art_code": e["art_code"],
-                    "notice_date": e["notice_date"],
-                }
-                break
-
-    return selected
 
 
 # ═══════════════════════════════════════════════════════════════════════════════════
@@ -445,7 +275,7 @@ def select_eastmoney_docs(pools: dict, missing_types: set, code: str) -> dict:
 # ═══════════════════════════════════════════════════════════════════════════════════
 
 def main():
-    parser = argparse.ArgumentParser(description="Discover bank PDFs from Cninfo + Eastmoney")
+    parser = argparse.ArgumentParser(description="Fetch bank PDF announcements + prefilter candidates")
     parser.add_argument("--codes", nargs="+", required=True, help="Bank stock codes (e.g. SH600000 SH600036)")
     parser.add_argument("--data-dir", required=True, help="Data directory root")
     parser.add_argument("--eastmoney-only", action="store_true", help="Skip Cninfo, use Eastmoney only")
@@ -473,8 +303,8 @@ def main():
         "Accept-Encoding": "gzip, deflate, br",
     })
 
-    manifest = {}
-    stats = {"cninfo_total": 0, "eastmoney_total": 0, "cninfo_docs": 0, "eastmoney_docs": 0, "missing": 0}
+    candidates = {}
+    stats = {"cninfo_total": 0, "eastmoney_total": 0}
 
     for i, code in enumerate(args.codes):
         if i > 0:
@@ -486,118 +316,92 @@ def main():
         print(f"\n{'─'*55}")
         print(f"{code} ───")
 
+        bank_data = {
+            "code": code,
+            "cninfo_raw": [],
+            "eastmoney_raw": [],
+            "pools": {"annual_report": [], "quarterly_report": [], "pillar3": []},
+        }
+
         # ── Tier 1: Cninfo ──────────────────────────────────────────────────
-        cninfo_docs = {}
         if not args.eastmoney_only:
             org_id = get_org_id(code, org_map)
             if org_id:
                 print(f"  [Cninfo] orgId={org_id}")
                 items = fetch_cninfo_announcements(code, org_id)
                 if items:
-                    pools = classify_cninfo(items)
-                    cninfo_docs = select_cninfo_docs(pools, code)
                     stats["cninfo_total"] += 1
+                    # Save raw items for AI fallback
+                    bank_data["cninfo_raw"] = items
+                    # Classify into candidate pools
+                    pools = classify_cninfo(items)
+                    bank_data["pools"]["annual_report"] = pools["annual_report"]
+                    bank_data["pools"]["quarterly_report"] = pools["quarterly_report"]
+                    bank_data["pools"]["pillar3"] = pools["pillar3"]
+                    print(f"  [Cninfo] Candidates: {len(pools['annual_report'])} annual, "
+                          f"{len(pools['quarterly_report'])} quarterly, "
+                          f"{len(pools['pillar3'])} pillar3")
                 else:
                     print(f"  [Cninfo] No announcements found")
             else:
                 print(f"  [Cninfo] orgId not found for {code}")
 
-        print(f"  Cninfo found: {list(cninfo_docs.keys())}")
+        # ── Tier 2: Eastmoney ───────────────────────────────────────────────
+        print(f"  [Eastmoney] Fetching...")
+        em_items = fetch_eastmoney_announcements(code, em_session)
+        if em_items:
+            stats["eastmoney_total"] += 1
+            bank_data["eastmoney_raw"] = em_items
+            em_pools = classify_eastmoney(em_items)
+            # Merge Eastmoney candidates into pools (supplement, not replace)
+            for cat in ["annual_report", "quarterly_report", "pillar3"]:
+                existing_titles = {e["title"] for e in bank_data["pools"][cat]}
+                for entry in em_pools.get(cat, []):
+                    if entry["title"] not in existing_titles:
+                        bank_data["pools"][cat].append(entry)
+                        existing_titles.add(entry["title"])
 
-        # ── Tier 2: Eastmoney fallback ──────────────────────────────────────
-        missing_types = set(DOC_TYPES) - set(cninfo_docs.keys())
-        em_docs = {}
-        em_pools = {}
+        candidates[code] = bank_data
 
-        if missing_types:
-            print(f"  [Eastmoney] Fetching to fill: {missing_types}")
-            em_items = fetch_eastmoney_announcements(code, em_session)
-            if em_items:
-                em_pools = classify_eastmoney(em_items)
-                em_docs = select_eastmoney_docs(em_pools, missing_types, code)
-                stats["eastmoney_total"] += 1
-            print(f"  Eastmoney filled: {list(em_docs.keys())}")
-
-        # ── Merge + cross-reference ──────────────────────────────────────────
-        # Build Eastmoney index for cross-referencing art_codes into cninfo docs
-        em_index = {}
-        for cat in ["annual_report", "quarterly_report", "pillar3"]:
-            for entry in em_pools.get(cat, []):
-                em_index[cat] = em_index.get(cat, []) + [entry]
-
-        def _enrich_with_em(doc):
-            """Add Eastmoney art_code to a Cnino doc if a matching EM entry exists."""
-            if not em_pools:
-                return
-            title = doc.get("title", "")
-            import re
-            m = re.search(r"(\d{4})", title)
-            doc_year = m.group(1) if m else None
-
-            # Find matching category
-            cat_map = {
-                "年度报告": "annual_report", "年度资本": "pillar3",
-                "季度报告": "quarterly_report", "第三支柱": "pillar3",
-                "资本充足": "pillar3",
-            }
-            cat = None
-            for kw, c in cat_map.items():
-                if kw in title:
-                    cat = c
-                    break
-            if not cat:
-                return
-
-            # Find best match by year
-            for entry in em_index.get(cat, []):
-                if doc_year and doc_year in entry.get("title", ""):
-                    doc["art_code"] = entry["art_code"]
-                    doc["fallback_url"] = entry["pdf_url"]
-                    return
-
-        bank_docs = {}
-        for dt in DOC_TYPES:
-            if dt in cninfo_docs:
-                doc = cninfo_docs[dt]
-                _enrich_with_em(doc)
-                bank_docs[dt] = doc
-                stats["cninfo_docs"] += 1
-            elif dt in em_docs:
-                bank_docs[dt] = em_docs[dt]
-                stats["eastmoney_docs"] += 1
-            else:
-                bank_docs[dt] = {"status": "not_found", "source": None}
-                stats["missing"] += 1
-
-        manifest[code] = bank_docs
-
-        # Save raw data per bank
+        # Save raw announcements per bank for AI fallback
         bank_dir = data_dir / code
         bank_dir.mkdir(parents=True, exist_ok=True)
+        raw_path = bank_dir / "raw_announcements.json"
+        with open(raw_path, "w", encoding="utf-8") as f:
+            json.dump({
+                "code": code,
+                "cninfo_count": len(bank_data["cninfo_raw"]),
+                "eastmoney_count": len(bank_data["eastmoney_raw"]),
+                "cninfo_raw": bank_data["cninfo_raw"],
+                "eastmoney_raw": bank_data["eastmoney_raw"],
+            }, f, ensure_ascii=False, indent=2)
+        print(f"  [Saved] {len(bank_data['cninfo_raw'])} cninfo + {len(bank_data['eastmoney_raw'])} eastmoney items")
 
-    # Write manifest
-    manifest_path = data_dir / "pdf_manifest.json"
-    output = {
+    # Write candidate pools (NO auto-selection — AI triage follows)
+    candidate_path = data_dir / "pdf_manifest_candidates.json"
+    candidate_output = {
         "generated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-        "strategy": "cninfo_primary_eastmoney_fallback",
+        "strategy": "cninfo_primary_eastmoney_supplement",
         "total_banks": len(args.codes),
-        "banks": manifest,
+        "banks": {},
     }
-    with open(manifest_path, "w", encoding="utf-8") as f:
-        json.dump(output, f, ensure_ascii=False, indent=2)
+    for code in args.codes:
+        candidate_output["banks"][code] = {
+            "pools": candidates[code]["pools"],
+            "raw_announcements": f"{code}/raw_announcements.json",
+        }
+    with open(candidate_path, "w", encoding="utf-8") as f:
+        json.dump(candidate_output, f, ensure_ascii=False, indent=2)
 
     # Summary
     print(f"\n{'='*55}")
-    print(f"Discovery complete.")
-    print(f"  Strategy: Cninfo primary → Eastmoney fallback")
-    for code in args.codes:
-        docs = manifest[code]
-        sources = {dt: d.get("source", "none") for dt, d in docs.items()}
-        c_count = sum(1 for s in sources.values() if s == "cninfo")
-        e_count = sum(1 for s in sources.values() if s == "eastmoney")
-        m_count = sum(1 for s in sources.values() if s is None)
-        print(f"  {code}: {c_count} cninfo + {e_count} eastmoney + {m_count} missing")
-    print(f"\nManifest: {manifest_path}")
+    print(f"Candidate discovery complete.")
+    print(f"  Cninfo: {stats['cninfo_total']} banks | Eastmoney: {stats['eastmoney_total']} banks")
+    print(f"  Candidates: {candidate_path}")
+    print(f"\n{'!'*55}")
+    print(f"  NEXT: AI triage — read pdf_manifest_candidates.json,")
+    print(f"  pick the 6 target docs per bank, write pdf_manifest.json")
+    print(f"{'!'*55}")
 
 
 if __name__ == "__main__":

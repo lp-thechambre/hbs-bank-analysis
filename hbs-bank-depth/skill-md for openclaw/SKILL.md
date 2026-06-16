@@ -3,7 +3,7 @@ name: bank-depth
 description: "Perform full HBS depth analysis on A-share listed banks using a 5-layer AI spawn pipeline. Produces five-level ratings (STRONG_BUY/BUY/HOLD/SELL/STRONG_SELL), VOH scores, and complete per-bank depth reports."
 metadata:
   openclaw:
-    emoji: "\U0001F50D"
+    emoji: "🔍"
     user-invocable: true
     allowed-tools:
       - exec
@@ -26,7 +26,7 @@ metadata:
 HBS-Bank-Depth is Layer 2 of the Homebrew Strategy investment research system. It performs complete deep analysis on A-share listed banks that pass the Screen (Layer 1) filter, covering all 23 chapters of the HBS methodology v0.3.
 
 ```
-hbs-bank-screen           hbs-bank-depth            hbs-bank-portfolio (future)
+hbs-bank-screen           hbs-bank-depth            hbs-bank-portfolio
   (Layer 1 funnel)  →      (Layer 2 funnel)   →       (Layer 3 portfolio)
   42 → 10-15 banks         10-15 → 3-5 banks           weights + backtest
 ```
@@ -51,8 +51,8 @@ hbs-bank-screen           hbs-bank-depth            hbs-bank-portfolio (future)
                                     ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │                      Layer 0: Data Preparation                   │
-│  0a: AI discovers PDF links + timing calibration                 │
-│  0b: Python batch downloads PDFs                                 │
+│  0a: Script fetches candidates → AI triages & selects manifests  │
+│  0b: Script downloads PDFs → AI verifies completeness            │
 │  0c: PDF → structured files (1 spawn/bank, batch_size=3 waves)   │
 │  0d: Surface metric extraction (1 spawn/bank, batch_size=3 waves) │
 │  0e: Python peer benchmark computation                           │
@@ -106,6 +106,8 @@ hbs-bank-screen           hbs-bank-depth            hbs-bank-portfolio (future)
 
 | Layer | Name | Banks per spawn | Parallelism | Toolkit |
 |-------|------|----------------|-------------|---------|
+| L0a | PDF Discovery + AI Triage | All | Python script + AI | discover_pdfs.py |
+| L0b | PDF Download + AI Verify | All | Python script + AI | download_pdfs.py |
 | L0c | PDF → Structured | 1 | 3/spawn batch | structured_template.md |
 | L0d | Surface Metric Extraction | 1 | 3/spawn batch | formula_graph.json (Section A/B only) |
 | L0e | Peer Benchmarks | All | Python script | — |
@@ -127,15 +129,11 @@ hbs-bank-screen           hbs-bank-depth            hbs-bank-portfolio (future)
 
 5. **L5 Chief Does Not Re-Score**: The Chief spawn reads `per_bank_voh.json` scorecards from Vice. It does NOT re-read raw data, re-score banks, or override Vice scores. If a score looks suspicious, it flags it in Edge Cases — but does not change it.
 
-6. **Path Constraint**: All outputs MUST reside under `{workspace}/.hbs-bank/data/YYYY-MM-DD/`. The root `data_home` is configured in `assets/batch_config.json` — editable per platform (openclaw workspace, Claude Code project root, etc.).
+6. **Path Constraint**: All outputs MUST reside under `{workspace}/.hbs-bank/data/YYYY-MM-DD/`. The root `data_home` is configured in `assets/batch_config.json` — editable per platform.
 
-7. **No AI-Generated Replacement Scripts**: Pipeline layers L1-L5 MUST execute via AI spawns reading structured files and producing JSON outputs. Under NO circumstances may the scheduler:
-   - Generate a Python script that produces L1-L5 outputs
-   - Combine multiple layers into a single Python call
-   - Replace AI analysis with hardcoded if/else thresholds
-   Python scripts are ONLY for: L0a (API fetching), L0b (download + text extraction), L0e (statistical computation). All analysis layers (L1-L5) are AI judgment tasks, not script tasks.
+7. **No AI-Generated Replacement Scripts**: Pipeline layers L1-L5 MUST execute via AI spawns reading structured files and producing JSON outputs. Under NO circumstances may the scheduler generate Python scripts for L1-L5 outputs.
 
-8. **Curiosity Signal Quality**: Vice curiosity signals MUST be specific, traceable observations (metric + direction + magnitude). Generic risk warnings like "NIM needs monitoring" fail the KPI gate. Signals are the Chief's only window into per-bank anomalies — if they're vague, the synthesis report will be useless.
+8. **Curiosity Signal Quality**: Vice curiosity signals MUST be specific, traceable observations (metric + direction + magnitude).
 
 ## Pipeline Execution Mode
 
@@ -156,10 +154,10 @@ User: run depth on screen output
 
 1. Locate Screen's latest `final_output.json`
 2. Read `depth_input` field → get candidate bank list
-3. Confirm with user: "Will depth-analyze the following {N} banks: [list]. Add or remove any?"
+3. Confirm with user
 4. Ask: "Any specific concerns or questions to focus on?"
-5. Launch async pipeline (follow Execution Flow below)
-6. Report brief + follow-up questions on completion
+5. Launch pipeline
+6. Report on completion
 
 ### Mode B — Standalone Invocation
 
@@ -170,13 +168,11 @@ User: run depth on 招商银行 工商银行
 ```
 
 1. Parse bank codes/names → confirm list
-2. Confirm with user: "Will depth-analyze the following {N} banks: [list]. Add or remove any?"
+2. Confirm with user
 3. Ask: "Any specific concerns or questions to focus on?"
-4. Determine mode:
-   - 1 bank → Single-bank mode
-   - 2+ banks → Multi-bank mode (full pipeline)
-5. Launch async pipeline (follow Execution Flow below)
-6. Report brief + follow-up questions on completion
+4. Determine mode: 1 bank → Single, 2+ → Multi
+5. Launch pipeline
+6. Report on completion
 
 ## Batch Processing Strategy
 
@@ -194,122 +190,80 @@ for wave in chunk(banks, batch_size={batch_size}):
     log results to {data_dir}/pipeline_errors.log
 ```
 
-Spawns within a wave are fully independent — no visibility into each other, no inter-spawn communication. Waves are independent — results from wave 1 and wave 2 never reference each other.
+Spawns within a wave are fully independent — no inter-spawn communication.
 
 ## Data Directory Structure
 
-Root configured in `assets/batch_config.json` → `data_home`. Resolves to `{workspace}/.hbs-bank` by default (outside skill install directory).
+Root configured in `assets/batch_config.json` → `data_home`. Resolves to `{workspace}/.hbs-bank` by default.
 
 ```
 {data_home}/data/YYYY-MM-DD/
-├── env_scan.json
-├── pdf_manifest.json
-├── download_status.json
-├── peer_benchmark.json
-├── edge_markers.json
-├── final_output.json              # Multi-bank: ratings + VOH scores
-├── depth_report.md                # Multi-bank: synthesis report / Single-bank: primary report
-├── analysis_trail.md              # Per-bank per-layer audit trail
-├── pipeline_errors.log
-├── pipeline_state.json
-│
-├── {code}/
-│   ├── raw/
-│   │   ├── 2026Q1_quarterly_report.pdf
-│   │   ├── 2026Q1_pillar3.pdf
-│   │   ├── 2025_annual_report.pdf
-│   │   ├── 2025_annual_pillar3.pdf
-│   │   ├── 2024_annual_report.pdf
-│   │   └── 2024_annual_pillar3.pdf
-│   ├── raw_announcements.json
-│   ├── structured.md
-│   ├── leaf_values.json
-│   ├── per_bank_scan.json
-│   ├── per_bank_qual.json
-│   ├── depth_report.md            # Per-bank standalone report
-│   └── metric_appendix.json       # Complete metric inventory
+├── pdf_manifest.json, download_status.json, peer_benchmark.json
+├── edge_markers.json, final_output.json
+├── depth_report.md, analysis_trail.md
+├── pipeline_errors.log, pipeline_state.json
+└── {code}/
+    ├── raw/*.pdf, raw_announcements.json
+    ├── structured.md, leaf_values.json
+    ├── per_bank_scan.json, per_bank_qual.json
+    ├── per_bank_voh.json, depth_report.md
+    └── metric_appendix.json
 ```
-
----
 
 ## Execution Flow
 
-The main session acts as the pipeline dispatcher, following the detailed execution instructions in `prompts/scheduler_prompt.md`. Do NOT spawn a scheduler subagent — `sessions_spawn` is not available inside subagents.
+The main session acts as the pipeline dispatcher, following `prompts/scheduler_prompt.opcl.md`. Do NOT spawn a scheduler subagent — `sessions_spawn` is not available inside subagents.
 
-**Phases** (see `prompts/scheduler_prompt.md` for complete step-by-step instructions):
-- Phase 0: Pre-flight checks (env_scan.py, spawn availability, data directory)
-- Phase 1: Bank list confirmation (HITL)
-- Phase 2: L0 Data Preparation (0a: discover_pdfs, 0b: download_pdfs, 0c: structurize spawns, 0d: leaf extraction spawns, 0e: compute_benchmarks)
-- Phase 3: L1 Quantitative Analyst spawns (1 bank/spawn, batch=3)
-- Phase 4: L2 Edge Signals spawn (global)
-- Phase 5: L3 Qualitative Deep Read spawns (1 bank/spawn, batch=3)
-- Phase 6: L5a Vice Scoring spawns (1/bank, batch=3)
-- Phase 7b: L5b Chief Synthesis spawn (global)
-- Phase 8: Final report to user
+**Phases**: Phase 0 (pre-flight) → Phase 1 (bank list HITL) → Phase 2 (L0 data prep) → Phase 3 (L1 quant) → Phase 4 (L2 edge) → Phase 5 (L3 qual) → Phase 6 (L5a vice) → Phase 7b (L5b chief) → Phase 8 (final report)
 
-**KPI Gates**: Each layer has quality checks defined in `references/kpi_rubric.json`. Failed banks get redo (max 2 attempts for L1/L3). Still failing → marked DEGRADED.
-
----
+**KPI Gates**: Per-layer quality checks in `references/kpi_rubric.json`. Failed → redo (max 2) → DEGRADED.
 
 ## Degradation Strategy
 
 | Failure | Behavior |
 |---------|----------|
-| PDF download fails | Mark DOWNLOAD_FAILED, structured file missing that section |
-| PDF is scanned image (no text layer) | Mark OCR_NEEDED, skip that document |
-| Leaf metric extraction fails | Mark NOT_FOUND, dependent derived metrics become data_gap |
-| Bank Layer 1 spawn timeout | Mark bank L1_FAILED, subsequent layers use peer_benchmark proxy |
-| Bank Layer 3 spawn timeout | Bank uses L1 markers for L5a/L5b, qualitative profile missing |
-| Layer 2 Edge spawn timeout | Skip edge signals, L5a/L5b based on L1+L3 only |
-| Bank L5a Vice spawn timeout | Mark bank L5a_DEGRADED, Chief uses neutral proxy scores |
-| Full pipeline timeout (4 hours) | Produce best-effort results from completed layers |
-
----
+| PDF download fails | Mark DOWNLOAD_FAILED |
+| PDF scanned image | Mark OCR_NEEDED, skip |
+| Leaf extraction fails | Mark NOT_FOUND, derived → data_gap |
+| L1 spawn timeout | Mark L1_FAILED, use peer_benchmark proxy |
+| L3 spawn timeout | Use L1 markers for L5a/L5b |
+| L2 spawn timeout | Skip edge signals |
+| Full pipeline timeout (4h) | Best-effort from completed layers |
 
 ## Communication Rules
 
 - Progress logged to `{data_dir}/pipeline_state.json`, not announced mid-pipeline
-- Three strategic announces only (L0 complete, L3 complete, pipeline complete) with continuation markers
-- Final brief (Phase 8) is the only substantive user-facing report
-- NEVER include in any announce: metric values, financial data, MD&A text, analysis results, bank narratives
-
----
+- Three strategic announces only (L0 complete, L3 complete, pipeline complete)
+- NEVER include metric values, financial data, or MD&A text in announces
 
 ## Browser Policy
 
-All `web_fetch`/`web_search` MUST use headless mode. Prefer `exec python3 scripts/discover_pdfs.py` for L0a. If browser opens visibly → abort, log, mark degraded.
-
----
+All `web_fetch`/`web_search` MUST use headless mode. Prefer `exec python3 scripts/discover_pdfs.py` for L0a.
 
 ## Configuration
 
 See `assets/batch_config.json`: batch_size=3, pipeline_timeout=4h, spawn_timeout=20m, edge_search_budget=20.
 
----
-
 ## Platform Requirements
 
-Python 3.9+ with `requests`, `pdfplumber` (recommended), `PyPDF2` (fallback). Tools: exec, Read, Write, web_fetch, web_search, sessions_spawn. No API keys, databases, or GPUs required.
-
----
+Python 3.9+ with `requests`, `pdfplumber`. Tools: exec, Read, Write, web_fetch, web_search, sessions_spawn.
 
 ## Key Files
 
 | File | Role |
 |------|------|
-| `SKILL.md` | Entry point + dispatcher |
-| `prompts/scheduler_prompt.md` | Complete Phase 0-8 execution flow |
+| `skill-md for openclaw/SKILL.md` | OpenClaw entry point + dispatcher |
+| `prompts/scheduler_prompt.opcl.md` | Complete Phase 0-8 execution flow (OpenClaw) |
+| `prompts/scheduler_prompt.cc.md` | Complete Phase 0-8 execution flow (Claude Code) |
 | `prompts/structurize_prompt.md` | L0c: PDF → structured markdown |
 | `prompts/leaf_extraction_prompt.md` | L0d: Surface metric extraction |
 | `prompts/bank_scan_prompt.md` | L1: Quantitative analyst |
 | `prompts/edge_search_prompt.md` | L2: Edge signal search |
 | `prompts/qual_deep_dive_prompt.md` | L3: Qualitative deep reading |
-| `prompts/qual_deep_dive_prompt.md` | L3: Qualitative deep reading |
-| `prompts/synthesis_prompt.md` | L5: Synthesis + report (DEPRECATED — replaced by vice + chief) |
-| `prompts/vice_scoring_prompt.md` | L5a: Per-bank VOH scoring + curiosity signals (1 bank/spawn) |
-| `prompts/chief_synthesis_prompt.md` | L5b: Cross-bank signal aggregation + synthesis report (global) |
+| `prompts/vice_scoring_prompt.md` | L5a: Per-bank VOH scoring |
+| `prompts/chief_synthesis_prompt.md` | L5b: Cross-bank synthesis |
 | `scripts/discover_pdfs.py` | L0a: Eastmoney API |
-| `scripts/download_pdfs.py` | L0b: PDF download + extraction |
+| `scripts/download_pdfs.py` | L0b: PDF download |
 | `scripts/compute_benchmarks.py` | L0e: Peer benchmarks |
 | `scripts/env_scan.py` | Pre-flight diagnostics |
 | `references/formula_graph.json` | Formula dictionary + thresholds |

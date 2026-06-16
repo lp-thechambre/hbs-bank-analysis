@@ -1,0 +1,1383 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>HBS-Bank-Depth 架构图</title>
+<style>
+  :root {
+    --bg: #0f172a;
+    --surface: #1e293b;
+    --surface2: #334155;
+    --border: #475569;
+    --text: #e2e8f0;
+    --text-dim: #94a3b8;
+    --title: #f1f5f9;
+    --accent-python: #38bdf8;
+    --accent-spawn: #a78bfa;
+    --accent-global: #f472b6;
+    --accent-hitl: #fbbf24;
+    --accent-data: #34d399;
+    --accent-phase0: #f97316;
+    --accent-pipeline: #6366f1;
+    --line-color: #475569;
+    --line-highlight: #fbbf24;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    overflow-x: auto;
+    padding: 20px;
+  }
+
+  .app {
+    max-width: 1600px;
+    margin: 0 auto;
+    position: relative;
+  }
+
+  header {
+    text-align: center;
+    padding: 28px 20px 16px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 20px;
+  }
+
+  header h1 {
+    font-size: 28px;
+    font-weight: 700;
+    color: var(--title);
+    letter-spacing: 1px;
+  }
+
+  header .sub {
+    color: var(--text-dim);
+    font-size: 14px;
+    margin-top: 6px;
+  }
+
+  header .sub span {
+    display: inline-block;
+    margin: 0 10px;
+  }
+
+  .legend {
+    display: flex;
+    justify-content: center;
+    gap: 24px;
+    flex-wrap: wrap;
+    padding: 12px 0 18px;
+    font-size: 13px;
+  }
+
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .legend-dot {
+    width: 14px; height: 14px;
+    border-radius: 4px;
+    flex-shrink: 0;
+  }
+
+  .legend-line {
+    width: 28px; height: 3px;
+    border-radius: 2px; flex-shrink: 0;
+  }
+
+  .diagram {
+    position: relative;
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+  }
+
+  /* Layer separator */
+  .layer-label {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    max-width: 1200px;
+    padding: 12px 20px 8px;
+    margin-top: 4px;
+  }
+
+  .layer-label h2 {
+    font-size: 18px;
+    font-weight: 600;
+    white-space: nowrap;
+    letter-spacing: 0.5px;
+  }
+
+  .layer-label .line {
+    flex: 1;
+    height: 1px;
+  }
+
+  .layer-label .badge {
+    font-size: 11px;
+    padding: 2px 10px;
+    border-radius: 12px;
+    white-space: nowrap;
+    font-weight: 500;
+  }
+
+  /* Node rows */
+  .node-row {
+    display: flex;
+    justify-content: center;
+    gap: 20px;
+    flex-wrap: wrap;
+    width: 100%;
+    max-width: 1200px;
+    padding: 4px 0;
+  }
+
+  .node-row.phase-row {
+    gap: 16px;
+  }
+
+  .node {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px 18px;
+    width: 260px;
+    min-height: 100px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    position: relative;
+  }
+
+  .node:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 6px 20px rgba(0,0,0,0.3);
+  }
+
+  /* ── Node Type Styling (enhanced) ── */
+
+  /* Python script — blue left border + subtle blue bg + code icon */
+  .node.type-python {
+    border-left: 5px solid var(--accent-python);
+    background: linear-gradient(135deg, rgba(56,189,248,0.07), var(--surface) 60%);
+  }
+  .node.type-python:hover {
+    border-color: var(--accent-python);
+    box-shadow: 0 6px 20px rgba(56,189,248,0.15);
+    background: linear-gradient(135deg, rgba(56,189,248,0.12), var(--surface) 60%);
+  }
+
+  /* AI Spawn (per-bank) — purple left border + subtle purple bg + brain icon */
+  .node.type-spawn {
+    border-left: 5px solid var(--accent-spawn);
+    background: linear-gradient(135deg, rgba(167,139,250,0.07), var(--surface) 60%);
+  }
+  .node.type-spawn:hover {
+    border-color: var(--accent-spawn);
+    box-shadow: 0 6px 20px rgba(167,139,250,0.15);
+    background: linear-gradient(135deg, rgba(167,139,250,0.12), var(--surface) 60%);
+  }
+
+  /* AI Spawn (global) — pink left border + subtle pink bg + globe icon */
+  .node.type-global {
+    border-left: 5px solid var(--accent-global);
+    background: linear-gradient(135deg, rgba(244,114,182,0.07), var(--surface) 60%);
+  }
+  .node.type-global:hover {
+    border-color: var(--accent-global);
+    box-shadow: 0 6px 20px rgba(244,114,182,0.15);
+    background: linear-gradient(135deg, rgba(244,114,182,0.12), var(--surface) 60%);
+  }
+
+  /* HITL — gold left border + subtle gold bg + handshake icon */
+  .node.type-hitl {
+    border-left: 5px solid var(--accent-hitl);
+    background: linear-gradient(135deg, rgba(251,191,36,0.07), var(--surface) 60%);
+  }
+  .node.type-hitl:hover {
+    border-color: var(--accent-hitl);
+    box-shadow: 0 6px 20px rgba(251,191,36,0.15);
+    background: linear-gradient(135deg, rgba(251,191,36,0.12), var(--surface) 60%);
+  }
+
+  .node.type-data { border-left: 5px solid var(--accent-data); }
+  .node.type-data:hover { border-color: var(--accent-data); box-shadow: 0 6px 20px rgba(52,211,153,0.15); }
+  .node.type-phase0 { border-left: 5px solid var(--accent-phase0); }
+  .node.type-phase0:hover { border-color: var(--accent-phase0); box-shadow: 0 6px 20px rgba(249,115,22,0.15); }
+
+  /* ── Type badge always visible on every node ── */
+  .type-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    padding: 2px 10px 2px 8px;
+    border-radius: 4px;
+    margin-bottom: 8px;
+    width: fit-content;
+  }
+
+  .type-badge.bg-python { background: rgba(56,189,248,0.15); color: var(--accent-python); }
+  .type-badge.bg-spawn  { background: rgba(167,139,250,0.15); color: var(--accent-spawn); }
+  .type-badge.bg-global { background: rgba(244,114,182,0.15); color: var(--accent-global); }
+  .type-badge.bg-hitl   { background: rgba(251,191,36,0.15);  color: var(--accent-hitl); }
+  .type-badge.bg-phase0 { background: rgba(249,115,22,0.15); color: var(--accent-phase0); }
+  .type-badge.bg-data   { background: rgba(52,211,153,0.15); color: var(--accent-data); }
+
+  .node-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 6px;
+  }
+
+  .node-icon {
+    width: 32px; height: 32px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    font-size: 15px;
+    font-weight: 700;
+  }
+
+  .node-title {
+    font-weight: 600;
+    font-size: 14px;
+    color: var(--title);
+  }
+
+  .node-fn {
+    font-size: 12px;
+    color: var(--text-dim);
+    margin-bottom: 6px;
+    line-height: 1.4;
+  }
+
+  .node-detail {
+    font-size: 11px;
+    color: var(--text-dim);
+    line-height: 1.5;
+    margin-top: 4px;
+  }
+
+  .node-detail strong {
+    color: var(--text);
+  }
+
+  .node-tech {
+    display: inline-block;
+    font-size: 10px;
+    padding: 1px 7px;
+    border-radius: 8px;
+    background: var(--surface2);
+    color: var(--text-dim);
+    margin-top: 5px;
+    letter-spacing: 0.3px;
+  }
+
+  .node-output {
+    font-size: 10px;
+    color: var(--text-dim);
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    margin-top: 4px;
+    padding: 2px 6px;
+    background: rgba(0,0,0,0.2);
+    border-radius: 4px;
+    display: inline-block;
+  }
+
+  /* SVG connector */
+  .connector-layer {
+    width: 100%;
+    max-width: 1200px;
+    height: 24px;
+    position: relative;
+    overflow: visible;
+  }
+
+  .connector-layer svg {
+    width: 100%;
+    height: 100%;
+    overflow: visible;
+  }
+
+  .connector-line {
+    stroke: var(--line-color);
+    stroke-width: 2;
+    fill: none;
+    transition: stroke 0.3s, stroke-width 0.3s;
+  }
+
+  .connector-arrow {
+    fill: var(--line-color);
+    transition: fill 0.3s;
+  }
+
+  /* Highlight states */
+  .node.dimmed {
+    opacity: 0.35;
+    filter: grayscale(0.6);
+  }
+
+  .node.highlight {
+    opacity: 1;
+    filter: none;
+  }
+
+  .connector-line.highlight {
+    stroke: var(--line-highlight);
+    stroke-width: 3;
+  }
+
+  .connector-arrow.highlight {
+    fill: var(--line-highlight);
+  }
+
+  /* Parallel badge on nodes */
+  .node-parallel {
+    position: absolute;
+    top: -7px;
+    right: -7px;
+    font-size: 10px;
+    padding: 1px 8px;
+    border-radius: 8px;
+    background: var(--accent-spawn);
+    color: #fff;
+    font-weight: 600;
+    letter-spacing: 0.3px;
+  }
+
+  .node-parallel.global-badge {
+    background: var(--accent-global);
+  }
+
+  /* Data flow indicators */
+  .data-flow {
+    font-size: 10px;
+    color: var(--accent-data);
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    margin-top: 3px;
+  }
+
+  /* Hover tooltip area */
+  .hover-hint {
+    text-align: center;
+    font-size: 12px;
+    color: var(--text-dim);
+    padding: 6px;
+    opacity: 0.7;
+  }
+
+  /* Annotation sidebar */
+  .annotations {
+    position: fixed;
+    right: 16px;
+    top: 50%;
+    transform: translateY(-50%);
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    opacity: 0.5;
+    transition: opacity 0.3s;
+    font-size: 10px;
+    color: var(--text-dim);
+    text-align: right;
+    max-width: 140px;
+    pointer-events: none;
+    z-index: 10;
+  }
+
+  .annotations:hover { opacity: 1; }
+
+  /* Responsive */
+  @media (max-width: 900px) {
+    .node { width: 220px; padding: 10px 14px; }
+    .annotations { display: none; }
+  }
+
+  @media (max-width: 700px) {
+    .node { width: 100%; max-width: 360px; }
+    .node-row { flex-direction: column; align-items: center; }
+    .layer-label { flex-wrap: wrap; }
+  }
+
+  /* Input file marker */
+  .input-marker {
+    font-size: 10px;
+    color: var(--text-dim);
+    padding: 1px 5px;
+    border: 1px dashed var(--border);
+    border-radius: 3px;
+    display: inline-block;
+    margin-right: 3px;
+    margin-top: 2px;
+  }
+</style>
+</head>
+<body>
+<div class="app">
+
+<header>
+  <h1>HBS-Bank-Depth 架构图</h1>
+  <div class="sub">
+    <span>Layer 2 · Homebrew Strategy 深度分析管道</span>
+    <span>|</span>
+    <span>覆盖 HBS v0.3 全部 23 章</span>
+    <span>|</span>
+    <span>产出: 五级评级 + VOH 评分 + 深度报告</span>
+  </div>
+</header>
+
+<div class="legend">
+  <div class="legend-item"><div class="legend-dot" style="background:var(--accent-python)"></div> 🐍 Python 脚本</div>
+  <div class="legend-item"><div class="legend-dot" style="background:var(--accent-spawn)"></div> 🧠 AI 分析 (单行, batch=3)</div>
+  <div class="legend-item"><div class="legend-dot" style="background:var(--accent-global)"></div> 🌐 AI 分析 (全局)</div>
+  <div class="legend-item"><div class="legend-dot" style="background:var(--accent-hitl)"></div> ✋ 人机交互 (HITL)</div>
+  <div class="legend-item"><div class="legend-dot" style="background:var(--accent-data)"></div> 数据/配置文件</div>
+  <div class="legend-item"><div class="legend-dot" style="background:var(--accent-phase0)"></div> ⚙️ 环境预检</div>
+  <div class="legend-item"><div class="legend-line" style="background:var(--line-highlight)"></div> 高亮连接</div>
+</div>
+
+<div class="hover-hint">🖱 悬停任意节点高亮关联路径 · 点击查看详情</div>
+
+<div class="diagram" id="diagram">
+
+  <!-- ============================================ -->
+  <!-- ENTRY -->
+  <!-- ============================================ -->
+  <div class="layer-label" style="margin-top:0">
+    <h2 style="color:var(--accent-hitl)">⏺ 入口 · 模式检测</h2>
+    <div class="line" style="background:var(--accent-hitl)"></div>
+    <div class="badge" style="background:var(--accent-hitl);color:#000">HITL</div>
+  </div>
+
+  <div class="node-row phase-row" data-layer="entry">
+    <div class="node type-hitl" data-id="mode-a" data-layer="entry">
+      <div class="type-badge bg-hitl">✋ 人机交互</div>
+      <div class="node-header">
+        <div class="node-icon" style="background:var(--accent-hitl);color:#000">A</div>
+        <div class="node-title">Mode A — 消费 Screen 输出</div>
+      </div>
+      <div class="node-fn">读取 Screen 的 final_output.json，提取 depth_input 字段获取候选银行列表</div>
+      <div class="node-detail"><strong>职责：</strong>自动承接上层筛选结果，无需手动输入银行代码</div>
+      <div class="node-tech">读取 final_output.json</div>
+    </div>
+
+    <div class="node type-hitl" data-id="mode-b" data-layer="entry">
+      <div class="type-badge bg-hitl">✋ 人机交互</div>
+      <div class="node-header">
+        <div class="node-icon" style="background:var(--accent-hitl);color:#000">B</div>
+        <div class="node-title">Mode B — 独立调用</div>
+      </div>
+      <div class="node-fn">直接解析用户输入的银行代码/名称，支持中英文混合输入</div>
+      <div class="node-detail"><strong>职责：</strong>支持 1-15 家银行，自动识别模式（single/streamlined/full）</div>
+      <div class="node-tech">名称→代码映射表</div>
+    </div>
+  </div>
+
+  <!-- Entry → Phase 0 -->
+  <div class="connector-layer" data-from="mode-a,mode-b" data-to="phase0">
+    <svg><path d="M 50%,0 L 50%,100%" class="connector-line" id="cl-entry-p0"/><polygon points="-5,20 5,20 0,28" class="connector-arrow" id="ca-entry-p0" transform="translate(0,0)"/></svg>
+  </div>
+
+  <!-- ============================================ -->
+  <!-- PHASE 0: PRE-FLIGHT -->
+  <!-- ============================================ -->
+  <div class="layer-label">
+    <h2 style="color:var(--accent-phase0)">🔍 Phase 0 · 预检</h2>
+    <div class="line" style="background:var(--accent-phase0)"></div>
+    <div class="badge" style="background:var(--accent-phase0);color:#000">HARD GATE</div>
+  </div>
+
+  <div class="node-row" data-layer="phase0">
+    <div class="node type-phase0" data-id="phase0" data-layer="phase0">
+      <div class="type-badge bg-phase0">⚙️ 环境预检</div>
+      <div class="node-header">
+        <div class="node-icon" style="background:var(--accent-phase0);color:#000">P0</div>
+        <div class="node-title">预检 (3 项)</div>
+      </div>
+      <div class="node-fn">A: 运行 env_scan.py 检查 Python/依赖/PDF 提取/搜索可用性<br>B: 验证 sessions_spawn 可用<br>C: 初始化 {data_dir}/ 目录和 pipeline_errors.log</div>
+      <div class="node-detail"><strong>职责：</strong>确保运行环境完整，Python 和 requests 缺失 → FATAL</div>
+      <div class="node-tech">python3 scripts/env_scan.py</div>
+      <div class="data-flow">→ env_scan.json</div>
+    </div>
+  </div>
+
+  <!-- Phase 0 → Phase 1 -->
+  <div class="connector-layer" data-from="phase0" data-to="phase1">
+    <svg><path d="M 50%,0 L 50%,100%" class="connector-line" id="cl-p0-p1"/><polygon points="-5,20 5,20 0,28" class="connector-arrow" id="ca-p0-p1" transform="translate(0,0)"/></svg>
+  </div>
+
+  <!-- ============================================ -->
+  <!-- PHASE 1: BANK LIST CONFIRMATION -->
+  <!-- ============================================ -->
+  <div class="layer-label">
+    <h2 style="color:var(--accent-hitl)">📋 Phase 1 · 银行列表确认</h2>
+    <div class="line" style="background:var(--accent-hitl)"></div>
+    <div class="badge" style="background:var(--accent-hitl);color:#000">HITL</div>
+  </div>
+
+  <div class="node-row" data-layer="phase1">
+    <div class="node type-hitl" data-id="phase1" data-layer="phase1">
+      <div class="type-badge bg-hitl">✋ 人机交互</div>
+      <div class="node-header">
+        <div class="node-icon" style="background:var(--accent-hitl);color:#000">P1</div>
+        <div class="node-title">银行列表确认</div>
+      </div>
+      <div class="node-fn">向用户展示候选银行列表，确认增删，收集关注问题</div>
+      <div class="node-detail"><strong>职责：</strong>这是管道中仅有的 2 个人机交互点之一。确认后立即进入自动模式</div>
+      <div class="node-tech">用户确认 → 确定 mode: single | multi</div>
+    </div>
+  </div>
+
+  <!-- Phase 1 → L0 -->
+  <div class="connector-layer" data-from="phase1" data-to="l0-label">
+    <svg><path d="M 50%,0 L 50%,100%" class="connector-line" id="cl-p1-l0"/><polygon points="-5,20 5,20 0,28" class="connector-arrow" id="ca-p1-l0" transform="translate(0,0)"/></svg>
+  </div>
+
+  <!-- ============================================ -->
+  <!-- L0: DATA PREPARATION -->
+  <!-- ============================================ -->
+  <div class="layer-label" id="l0-label">
+    <h2 style="color:var(--accent-python)">📦 Layer 0 · 数据准备</h2>
+    <div class="line" style="background:var(--accent-python)"></div>
+    <div class="badge" style="background:var(--accent-python);color:#000">Python + AI</div>
+  </div>
+
+  <!-- 0a + 0b (sequential Python) -->
+  <div class="node-row" data-layer="l0ab">
+    <div class="node type-python" data-id="l0a" data-layer="l0">
+      <div class="type-badge bg-python">🐍 脚本 + ✋ AI triage</div>
+      <div class="node-header">
+        <div class="node-icon" style="background:var(--accent-python);color:#000">0a</div>
+        <div class="node-title">PDF 发现 + AI 选档</div>
+      </div>
+      <div class="node-fn">脚本抓取候选 → AI 逐一挑选 6 份目标文档</div>
+      <div class="node-detail">
+        <strong>脚本仅做：</strong>Cninfo API + Eastmoney API 拉取原始公告列表，关键词预筛选为 3 个候选池（年报/季报/Pillar 3）。不做自动选档。<br>
+        <strong>AI 核心判断：</strong>读取 pdf_manifest_candidates.json，为每银行的每种文档类型从候选池中挑选最佳匹配。不足时回退搜索 raw_announcements.json。<br>
+        <strong>AI 产出：</strong>pdf_manifest.json — 最终 6 文档清单<br>
+        <strong>Pillar 3 可选：</strong>NOT_APPLICABLE 不视为错误
+      </div>
+      <div class="node-tech">discover_pdfs.py (no auto-select) + AI triage</div>
+      <div class="data-flow">↓ 候选: pdf_manifest_candidates.json<br>→ 最终: pdf_manifest.json (AI 产出)</div>
+    </div>
+
+    <div class="node type-python" data-id="l0b" data-layer="l0">
+      <div class="type-badge bg-python">🐍 脚本 + ✋ AI 校验</div>
+      <div class="node-header">
+        <div class="node-icon" style="background:var(--accent-python);color:#000">0b</div>
+        <div class="node-title">PDF 下载 + AI 校验</div>
+      </div>
+      <div class="node-fn">脚本 3 层下载 → AI 逐一验证完整性</div>
+      <div class="node-detail">
+        <strong>脚本职责：</strong>读取 pdf_manifest.json，逐文件 3 层下载（Cninfo 直链 → Eastmoney curl → Chrome headless）<br>
+        <strong>AI 校验：</strong>读取 download_status.json，逐银行检查完整性：LIKELY_COMPLETE / SUSPECT_SUMMARY / EXTREME_ANOMALY<br>
+        <strong>降级：</strong>EXTREME_ANOMALY → 标记 DOWNLOAD_FAILED，跳过 L0c spawn
+      </div>
+      <div class="node-tech">download_pdfs.py + AI verification</div>
+      <div class="data-flow">→ download_status.json + {code}/raw/*.pdf</div>
+    </div>
+  </div>
+
+  <!-- 0a → 0b connector -->
+  <div class="connector-layer" data-from="l0a" data-to="l0b">
+    <svg><path d="M 50%,0 L 50%,100%" class="connector-line" id="cl-l0a-l0b"/><polygon points="-5,20 5,20 0,28" class="connector-arrow" id="ca-l0a-l0b" transform="translate(0,0)"/></svg>
+  </div>
+
+  <!-- 0b → 0c connector -->
+  <div class="connector-layer" data-from="l0b" data-to="l0c,l0d">
+    <svg><path d="M 50%,0 L 50%,100%" class="connector-line" id="cl-l0b-l0c"/><polygon points="-5,20 5,20 0,28" class="connector-arrow" id="ca-l0b-l0c" transform="translate(0,0)"/></svg>
+  </div>
+
+  <!-- 0c + 0d (parallel AI spawns, batch=3) -->
+  <div class="node-row" data-layer="l0cd">
+    <div class="node type-spawn" data-id="l0c" data-layer="l0">
+      <div class="node-parallel">batch=3</div>
+      <div class="type-badge bg-spawn">🧠 AI 分析 (单行)</div>
+      <div class="node-header">
+        <div class="node-icon" style="background:var(--accent-spawn);color:#fff">0c</div>
+        <div class="node-title">PDF → 结构化文件</div>
+      </div>
+      <div class="node-fn">将原始 PDF 转换为结构化 Markdown（A-G 七大 Section）</div>
+      <div class="node-detail">
+        <strong>职责：</strong>1 spawn/银行，AI 逐页阅读 PDF，提取到模板结构<br>
+        <strong>Section:</strong> A 财务表格 | B 资产负债表 | C 利润表 | D 管理层讨论 | E 风险披露 | F 公司治理 | G 数据来源<br>
+        <strong>KPI:</strong> 文件存在 + 5/7 Sections 有实质内容 + 来源标记 pdf_extraction<br>
+        <strong>降级：</strong>失败 → redo 1次 → 仍失败 → STRUCT_FAILED
+      </div>
+      <div class="node-tech">structurize_prompt.md · structured_template.md</div>
+      <div class="node-output">→ {code}/structured.md</div>
+    </div>
+
+    <div class="node type-spawn" data-id="l0d" data-layer="l0">
+      <div class="node-parallel">batch=3</div>
+      <div class="type-badge bg-spawn">🧠 AI 分析 (单行)</div>
+      <div class="node-header">
+        <div class="node-icon" style="background:var(--accent-spawn);color:#fff">0d</div>
+        <div class="node-title">表面指标提取</div>
+      </div>
+      <div class="node-fn">从 structured.md 提取叶子指标值（公式图 A/B 部分）</div>
+      <div class="node-detail">
+        <strong>职责：</strong>1 spawn/银行，提取原始财务指标 + 单位归一化<br>
+        <strong>核心：</strong>多关键词跨表格匹配 → 交叉验证数值 → 单位统一到百万元<br>
+        <strong>KPI:</strong> ≥12 指标 + completeness ≥ 0.5 + 来源标记 pdf_extraction<br>
+        <strong>降级：</strong>失败 → redo 1次 → 仍失败 → LEAF_FAILED
+      </div>
+      <div class="node-tech">leaf_extraction_prompt.md · formula_graph.json</div>
+      <div class="node-output">→ {code}/leaf_values.json</div>
+    </div>
+  </div>
+
+  <!-- 0c + 0d → 0e -->
+  <div class="connector-layer" data-from="l0c,l0d" data-to="l0e">
+    <svg><path d="M 50%,0 L 50%,100%" class="connector-line" id="cl-l0cd-l0e"/><polygon points="-5,20 5,20 0,28" class="connector-arrow" id="ca-l0cd-l0e" transform="translate(0,0)"/></svg>
+  </div>
+
+  <!-- 0e -->
+  <div class="node-row" data-layer="l0e">
+    <div class="node type-python" data-id="l0e" data-layer="l0">
+      <div class="type-badge bg-python">🐍 Python 脚本</div>
+      <div class="node-header">
+        <div class="node-icon" style="background:var(--accent-python);color:#000">0e</div>
+        <div class="node-title">同行基准计算</div>
+      </div>
+      <div class="node-fn">跨银行统计算法：百分位排名、异常检测、统计摘要</div>
+      <div class="node-detail">
+        <strong>职责：</strong>全局 Python 统计计算，为后续分析层提供同行参照系<br>
+        <strong>计算内容：</strong>各指标百分位 | 同行均值/中位数 | 异常值检测 | 阈值校准<br>
+        <strong>输入：</strong>合并所有银行的 leaf_values.json → extracted_metrics.json<br>
+        <strong>降级：</strong>计算失败 → 创建最小占位 JSON
+      </div>
+      <div class="node-tech">compute_benchmarks.py · Python stats</div>
+      <div class="data-flow">→ peer_benchmark.json</div>
+    </div>
+  </div>
+
+  <!-- L0 → L1 -->
+  <div class="connector-layer" data-from="l0e" data-to="l1-label">
+    <svg><path d="M 50%,0 L 50%,100%" class="connector-line" id="cl-l0-l1"/><polygon points="-5,20 5,20 0,28" class="connector-arrow" id="ca-l0-l1" transform="translate(0,0)"/></svg>
+  </div>
+
+  <!-- ============================================ -->
+  <!-- L1: QUANTITATIVE ANALYST -->
+  <!-- ============================================ -->
+  <div class="layer-label" id="l1-label">
+    <h2 style="color:var(--accent-spawn)">📊 Layer 1 · 定量分析师</h2>
+    <div class="line" style="background:var(--accent-spawn)"></div>
+    <div class="badge" style="background:var(--accent-spawn);color:#fff">AI Spawn × N</div>
+  </div>
+
+  <div class="node-row" data-layer="l1">
+    <div class="node type-spawn" data-id="l1" data-layer="l1">
+      <div class="node-parallel">batch=3</div>
+      <div class="type-badge bg-spawn">🧠 AI 分析 (单行)</div>
+      <div class="node-header">
+        <div class="node-icon" style="background:var(--accent-spawn);color:#fff">L1</div>
+        <div class="node-title">定量分析师</div>
+      </div>
+      <div class="node-fn">公式计算 + 文本差异检测 + 7 大扩展分析模块</div>
+      <div class="node-detail">
+        <strong>职责：</strong>1 spawn/银行，基于公式图进行自主探索式计算分析<br>
+        <strong>输入：</strong>leaf_values.json + structured.md（按需读取）+ formula_graph.json<br>
+        <strong>输出字段：</strong>
+        <br>• computed_metrics — 派生指标（含百分位、红/黄旗标记）
+        <br>• text_diff_signals — 跨期文本差异检测（消失/漂移/选择性披露）
+        <br>• curiosity_flags — 好奇心信号（≥3 条，≥1 high severity）
+        <br>• edge_handoff — 传给 L2 的具体搜索主题
+        <br>• qual_handoff — 传给 L3 的定性深读问题
+        <br><strong>KPI:</strong> ≥15 指标 + completeness ≥ 0.6 + 来源 pdf_extraction<br>
+        <strong>降级：</strong>失败 → redo 最多 2 次 → L1_FAILED（使用 peer_benchmark 替代）
+      </div>
+      <div class="node-tech">bank_scan_prompt.md · formula_graph.json</div>
+      <div class="node-output">→ {code}/per_bank_scan.json</div>
+    </div>
+  </div>
+
+  <!-- L1 → L2 -->
+  <div class="connector-layer" data-from="l1" data-to="l2-label">
+    <svg><path d="M 50%,0 L 50%,100%" class="connector-line" id="cl-l1-l2"/><polygon points="-5,20 5,20 0,28" class="connector-arrow" id="ca-l1-l2" transform="translate(0,0)"/></svg>
+  </div>
+
+  <!-- ============================================ -->
+  <!-- L2: EDGE SIGNALS -->
+  <!-- ============================================ -->
+  <div class="layer-label" id="l2-label">
+    <h2 style="color:var(--accent-global)">🌐 Layer 2 · 边缘信号 & 马赛克理论</h2>
+    <div class="line" style="background:var(--accent-global)"></div>
+    <div class="badge" style="background:var(--accent-global);color:#fff">全局 Spawn</div>
+  </div>
+
+  <div class="node-row" data-layer="l2">
+    <div class="node type-global" data-id="l2" data-layer="l2">
+      <div class="node-parallel global-badge">全局</div>
+      <div class="type-badge bg-global">🌐 AI 分析 (全局)</div>
+      <div class="node-header">
+        <div class="node-icon" style="background:var(--accent-global);color:#fff">L2</div>
+        <div class="node-title">边缘信号搜索</div>
+      </div>
+      <div class="node-fn">读取所有 L1 的 edge_handoff 好奇心信号，进行外部网络搜索</div>
+      <div class="node-detail">
+        <strong>职责：</strong>1 个全局 spawn，从外部来源验证/补充内部分析信号<br>
+        <strong>搜索后端：</strong>searXNG（baidu + sogou + bing）或平台 web_search<br>
+        <strong>模板查询：</strong>监管/员工/招聘/行业传闻/供应链 五大类<br>
+        <strong>输出字段：</strong>
+        <br>• signals — edge_markers 数组（含 source_url、corroborates/contradicts）
+        <br>• mosaic_themes — 马赛克主题聚合
+        <br>• search_budget_used — 搜索预算使用跟踪（默认为 20）
+        <br><strong>KPI:</strong> ≥5 条信号 + 每条有非空 source_url + 搜索执行 ≥50% budget<br>
+        <strong>降级：</strong>失败 → 标记 L2_DEGRADED（L5a/L5b 仅基于 L1+L3）
+      </div>
+      <div class="node-tech">edge_search_prompt.md · mosaic_search_guide.md</div>
+      <div class="data-flow">→ edge_markers.json</div>
+    </div>
+  </div>
+
+  <!-- L2 → L3 -->
+  <div class="connector-layer" data-from="l2" data-to="l3-label">
+    <svg><path d="M 50%,0 L 50%,100%" class="connector-line" id="cl-l2-l3"/><polygon points="-5,20 5,20 0,28" class="connector-arrow" id="ca-l2-l3" transform="translate(0,0)"/></svg>
+  </div>
+
+  <!-- ============================================ -->
+  <!-- L3: QUALITATIVE DEEP READ -->
+  <!-- ============================================ -->
+  <div class="layer-label" id="l3-label">
+    <h2 style="color:var(--accent-spawn)">📖 Layer 3 · 定性深读</h2>
+    <div class="line" style="background:var(--accent-spawn)"></div>
+    <div class="badge" style="background:var(--accent-spawn);color:#fff">AI Spawn × N</div>
+  </div>
+
+  <div class="node-row" data-layer="l3">
+    <div class="node type-spawn" data-id="l3" data-layer="l3">
+      <div class="node-parallel">batch=3</div>
+      <div class="type-badge bg-spawn">🧠 AI 分析 (单行)</div>
+      <div class="node-header">
+        <div class="node-icon" style="background:var(--accent-spawn);color:#fff">L3</div>
+        <div class="node-title">定性深读</div>
+      </div>
+      <div class="node-fn">7 大模块深度阅读 MD&A / 公司治理 / Pillar 3 全文</div>
+      <div class="node-detail">
+        <strong>职责：</strong>1 spawn/银行，深入阅读文本段落进行定性评估。读取 L1 qual_handoff 问题<br>
+        <strong>7 大模块：</strong>
+        <br>① 管理层讨论分析 | ② 战略清晰度 | ③ 风险评估披露
+        <br>④ 公司治理评估 | ⑤ 资本充足分析 | ⑥ 关联交易合规 | ⑦ 综合叙事
+        <br><strong>输出字段：</strong>
+        <br>• key_findings — 关键发现（≥5 条，每条含 source_section）
+        <br>• management_assessment — 战略清晰度/语气/可信度三维评估
+        <br>• flags_resolved/escalated — L1 问题的回应状态
+        <br>• narrative — 综合叙事段落（≥100 字符，禁止模板填充）
+        <br><strong>KPI:</strong> ≥5 条关键发现 + 三维管理层评估 + 来源 pdf_extraction<br>
+        <strong>降级：</strong>失败 → redo 最多 2 次 → QUAL_DEGRADED（使用 L1 markers 代理）
+      </div>
+      <div class="node-tech">qual_deep_dive_prompt.md · question_compass.md</div>
+      <div class="node-output">→ {code}/per_bank_qual.json</div>
+    </div>
+  </div>
+
+  <!-- L3 → L5a -->
+  <div class="connector-layer" data-from="l3" data-to="l5a-label">
+    <svg><path d="M 50%,0 L 50%,100%" class="connector-line" id="cl-l3-l5a"/><polygon points="-5,20 5,20 0,28" class="connector-arrow" id="ca-l3-l5a" transform="translate(0,0)"/></svg>
+  </div>
+
+  <!-- ============================================ -->
+  <!-- L5a: VICE SCORING -->
+  <!-- ============================================ -->
+  <div class="layer-label" id="l5a-label">
+    <h2 style="color:var(--accent-spawn)">🏅 Layer 5a · 副分析师评分 (Vice)</h2>
+    <div class="line" style="background:var(--accent-spawn)"></div>
+    <div class="badge" style="background:var(--accent-spawn);color:#fff">AI Spawn × N</div>
+  </div>
+
+  <div class="node-row" data-layer="l5a">
+    <div class="node type-spawn" data-id="l5a" data-layer="l5a">
+      <div class="node-parallel">batch=3</div>
+      <div class="type-badge bg-spawn">🧠 AI 分析 (单行)</div>
+      <div class="node-header">
+        <div class="node-icon" style="background:var(--accent-spawn);color:#fff">L5a</div>
+        <div class="node-title">Vice 评分</div>
+      </div>
+      <div class="node-fn">每银行 VOH 子评分 + 好奇心信号 + 深度报告撰写</div>
+      <div class="node-detail">
+        <strong>职责：</strong>1 spawn/银行，整合 L1 定量 + L3 定性 + L2 边缘信号 进行综合评分<br>
+        <strong>VOH 6 维子评分：</strong>
+        <br>① dpr_stability — 分红稳定性 | ② dividend_resilience — 分红韧性
+        <br>③ cdp — 资本充足度（来源 L0e） | ④ customer_quality — 客户质量（来源 L0e）
+        <br>⑤ marginal_profitability — 边际盈利 | ⑥ long_termism — 长期主义
+        <br><strong>输出：</strong>per_bank_voh.json 评分卡 + depth_report.md 完整报告（≥2000 字符）
+        <br><strong>好奇心信号要求：</strong>具体指标/事件引用（指标+方向+幅度），禁止泛泛风险提示<br>
+        <strong>KPI:</strong> 全部 6 子分 + 报告 ≥2000 字符 + 禁止模板占位符<br>
+        <strong>降级：</strong>失败 → redo 1次 → L5a_DEGRADED（Chief 使用中性代理分数）
+      </div>
+      <div class="node-tech">vice_scoring_prompt.md · voh_framework.md</div>
+      <div class="node-output">→ {code}/per_bank_voh.json + depth_report.md</div>
+    </div>
+  </div>
+
+  <!-- L5a → L5b -->
+  <div class="connector-layer" data-from="l5a" data-to="l5b-label">
+    <svg><path d="M 50%,0 L 50%,100%" class="connector-line" id="cl-l5a-l5b"/><polygon points="-5,20 5,20 0,28" class="connector-arrow" id="ca-l5a-l5b" transform="translate(0,0)"/></svg>
+  </div>
+
+  <!-- ============================================ -->
+  <!-- L5b: CHIEF SYNTHESIS -->
+  <!-- ============================================ -->
+  <div class="layer-label" id="l5b-label">
+    <h2 style="color:var(--accent-global)">📝 Layer 5b · 主编综合 (Chief)</h2>
+    <div class="line" style="background:var(--accent-global)"></div>
+    <div class="badge" style="background:var(--accent-global);color:#fff">全局 Spawn</div>
+  </div>
+
+  <div class="node-row" data-layer="l5b">
+    <div class="node type-global" data-id="l5b" data-layer="l5b">
+      <div class="node-parallel global-badge">全局</div>
+      <div class="type-badge bg-global">🌐 AI 分析 (全局)</div>
+      <div class="node-header">
+        <div class="node-icon" style="background:var(--accent-global);color:#fff">L5b</div>
+        <div class="node-title">主编综合 (Chief)</div>
+      </div>
+      <div class="node-fn">跨银行信号聚合 + 主题综合 + 最终报告生成</div>
+      <div class="node-detail">
+        <strong>职责：</strong>1 个全局 spawn，读取所有 L5a 评分卡进行跨行综合<br>
+        <strong>硬约束 — 不重评：</strong>Chief 仅读取 per_bank_voh.json 评分卡，不重读原始数据、不改分数。可疑分数在 Edge Cases 中标记但不修改<br>
+        <strong>输出：</strong>
+        <br>• VOH 排名表（全部银行，含所有分量分数）
+        <br>• ≥3 跨银行主题（含验证注释）
+        <br>• ≥3 侦察建议（具体查询 + 数据来源）
+        <br>• final_output.json（被 Portfolio 技能消费）
+        <br>• synthesis_report.md（综合深度报告）
+        <br><strong>KPI:</strong> 完整排名表 + ≥3 主题 + ≥3 侦察建议 + 不修改分数<br>
+        <strong>降级：</strong>失败 → redo 1次 → L5b_DEGRADED
+      </div>
+      <div class="node-tech">chief_synthesis_prompt.md</div>
+      <div class="node-output">→ synthesis_report.json + .md + final_output.json</div>
+    </div>
+  </div>
+
+  <!-- L5b → Phase 8 -->
+  <div class="connector-layer" data-from="l5b" data-to="phase8-label">
+    <svg><path d="M 50%,0 L 50%,100%" class="connector-line" id="cl-l5b-p8"/><polygon points="-5,20 5,20 0,28" class="connector-arrow" id="ca-l5b-p8" transform="translate(0,0)"/></svg>
+  </div>
+
+  <!-- ============================================ -->
+  <!-- PHASE 8: FINAL REPORT -->
+  <!-- ============================================ -->
+  <div class="layer-label" id="phase8-label">
+    <h2 style="color:var(--accent-hitl)">🎯 Phase 8 · 最终报告</h2>
+    <div class="line" style="background:var(--accent-hitl)"></div>
+    <div class="badge" style="background:var(--accent-hitl);color:#000">HITL</div>
+  </div>
+
+  <div class="node-row" data-layer="phase8">
+    <div class="node type-hitl" data-id="phase8" data-layer="phase8">
+      <div class="type-badge bg-hitl">✋ 人机交互</div>
+      <div class="node-header">
+        <div class="node-icon" style="background:var(--accent-hitl);color:#000">P8</div>
+        <div class="node-title">最终报告</div>
+      </div>
+      <div class="node-fn">500-800 词简报：评级分布 + VOH Top 5 + 追问问题</div>
+      <div class="node-detail">
+        <strong>职责：</strong>管道的第二个也是最后一个 HITL 点。读取 synthesis_report.json + pipeline_errors.log，生成易读简报<br>
+        <strong>包含：</strong>
+        <br>• 分析银行数 & 完成层级
+        <br>• 五级评级分布（STRONG_BUY/BUY/HOLD/SELL/STRONG_SELL）
+        <br>• VOH Top 5 排名
+        <br>• 需要追问的问题清单
+        <br>• 完整报告和审计底稿路径<br>
+        <strong>不包含：</strong>不披露指标值、财务数据、MD&A 原文
+      </div>
+      <div class="node-tech">读取 synthesis_report.json + pipeline_errors.log</div>
+      <div class="data-flow">→ 用户简报 + final_output.json → Portfolio</div>
+    </div>
+  </div>
+
+  <!-- ============================================ -->
+  <!-- L4 REMOVED NOTE -->
+  <!-- ============================================ -->
+  <div class="layer-label" style="margin-top:24px;opacity:0.5">
+    <h2 style="color:var(--border);font-size:14px;font-weight:400">Layer 4 (跨银行诚信审计) 已在 v2026-06 移除</h2>
+    <div class="line" style="background:var(--border)"></div>
+    <div style="font-size:11px;color:var(--text-dim);white-space:nowrap">诚信评估 → L5a · 跨行模式检测 → L5b</div>
+  </div>
+
+</div><!-- /diagram -->
+
+<!-- ============================================ -->
+<!-- INFO PANEL (on click) -->
+<!-- ============================================ -->
+<div id="info-panel" style="display:none;position:fixed;bottom:20px;right:20px;width:360px;max-height:300px;background:var(--surface);border:1px solid var(--accent-pipeline);border-radius:12px;padding:18px;z-index:100;overflow-y:auto;box-shadow:0 8px 32px rgba(0,0,0,0.5)">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+    <span id="info-title" style="font-weight:600;font-size:14px;color:var(--title)"></span>
+    <button onclick="document.getElementById('info-panel').style.display='none'" style="background:none;border:none;color:var(--text-dim);font-size:18px;cursor:pointer">&times;</button>
+  </div>
+  <div id="info-body" style="font-size:12px;color:var(--text-dim);line-height:1.6"></div>
+</div>
+
+<script>
+// Relationship graph for hover highlighting
+const nodeRelations = {
+  // Layer 0
+  'phase0': ['mode-a', 'mode-b', 'phase1'],
+  'l0a': ['phase1', 'l0b'],
+  'l0b': ['l0a', 'l0c', 'l0d'],
+  'l0c': ['l0b', 'l0e'],
+  'l0d': ['l0b', 'l0e'],
+  'l0e': ['l0c', 'l0d', 'l1'],
+
+  // L1
+  'l1': ['l0e', 'l2'],
+
+  // L2
+  'l2': ['l1', 'l3'],
+
+  // L3
+  'l3': ['l2', 'l5a'],
+
+  // L5a
+  'l5a': ['l3', 'l5b'],
+
+  // L5b
+  'l5b': ['l5a', 'phase8'],
+
+  // Entry / Phase
+  'mode-a': ['phase1'],
+  'mode-b': ['phase1'],
+  'phase1': ['mode-a', 'mode-b', 'l0a'],
+  'phase8': ['l5b'],
+
+  // L0: 0e also connects back to L1
+};
+
+// Add reverse edges for bidirectional highlighting
+Object.keys(nodeRelations).forEach(key => {
+  nodeRelations[key].forEach(rel => {
+    if (!nodeRelations[rel]) nodeRelations[rel] = [];
+    if (!nodeRelations[rel].includes(key)) {
+      nodeRelations[rel].push(key);
+    }
+  });
+});
+
+// Add layer-level connections (L2 ↔ L1, L3, etc.)
+// Already handled above
+
+function getRelatedNodes(id) {
+  const visited = new Set();
+  const queue = [id];
+  while (queue.length > 0) {
+    const current = queue.shift();
+    if (visited.has(current)) continue;
+    visited.add(current);
+    const relations = nodeRelations[current] || [];
+    relations.forEach(rel => {
+      if (!visited.has(rel)) queue.push(rel);
+    });
+  }
+  return visited;
+}
+
+function collectEdgeEndpoints() {
+  const endpoints = new Set();
+  Object.entries(nodeRelations).forEach(([from, tos]) => {
+    endpoints.add(from);
+    tos.forEach(t => endpoints.add(t));
+  });
+  return endpoints;
+}
+
+// Build connector map from SVG connectors
+function getConnectorInfo() {
+  const connectors = document.querySelectorAll('.connector-layer');
+  const result = [];
+  connectors.forEach(conn => {
+    const from = (conn.getAttribute('data-from') || '').split(',').map(s => s.trim()).filter(Boolean);
+    const to = (conn.getAttribute('data-to') || '').split(',').map(s => s.trim()).filter(Boolean);
+    const lines = conn.querySelectorAll('.connector-line');
+    const arrows = conn.querySelectorAll('.connector-arrow');
+    result.push({ from, to, lines, arrows, el: conn });
+  });
+  return result;
+}
+
+function getLayerNeighbors(id) {
+  // Get immediate neighbors (direct connections)
+  return nodeRelations[id] || [];
+}
+
+function highlightNode(nodeId) {
+  // Get all related nodes (2-hop)
+  const related = getRelatedNodes(nodeId);
+  const immediate = getLayerNeighbors(nodeId);
+  const allNodes = document.querySelectorAll('.node');
+
+  // Dim all nodes, then highlight related ones
+  allNodes.forEach(n => {
+    const nId = n.getAttribute('data-id');
+    if (nId === nodeId) {
+      n.classList.remove('dimmed');
+      n.classList.add('highlight');
+    } else if (related.has(nId)) {
+      n.classList.remove('dimmed');
+      n.classList.add('highlight');
+    } else {
+      n.classList.add('dimmed');
+      n.classList.remove('highlight');
+    }
+  });
+
+  // Highlight connectors
+  const connectors = getConnectorInfo();
+  connectors.forEach(conn => {
+    const connNodeIds = new Set([...conn.from, ...conn.to]);
+    let shouldHighlight = false;
+    connNodeIds.forEach(cnid => {
+      if (related.has(cnid)) shouldHighlight = true;
+    });
+    // More precise: highlight only if BOTH endpoints are in related
+    const allFromRelated = conn.from.every(f => related.has(f) || f === nodeId);
+    const allToRelated = conn.to.every(t => related.has(t) || t === nodeId);
+    const preciseHighlight = allFromRelated && allToRelated &&
+      (conn.from.some(f => related.has(f)) || conn.to.some(t => related.has(t)));
+
+    conn.lines.forEach(line => {
+      if (preciseHighlight) {
+        line.classList.add('highlight');
+      } else {
+        line.classList.remove('highlight');
+      }
+    });
+    conn.arrows.forEach(arr => {
+      if (preciseHighlight) {
+        arr.classList.add('highlight');
+      } else {
+        arr.classList.remove('highlight');
+      }
+    });
+  });
+}
+
+function resetHighlight() {
+  document.querySelectorAll('.node').forEach(n => {
+    n.classList.remove('dimmed', 'highlight');
+  });
+  document.querySelectorAll('.connector-line').forEach(line => {
+    line.classList.remove('highlight');
+  });
+  document.querySelectorAll('.connector-arrow').forEach(arr => {
+    arr.classList.remove('highlight');
+  });
+}
+
+// Hover events
+document.querySelectorAll('.node').forEach(node => {
+  node.addEventListener('mouseenter', () => {
+    const id = node.getAttribute('data-id');
+    highlightNode(id);
+  });
+  node.addEventListener('mouseleave', resetHighlight);
+
+  // Click shows info panel
+  node.addEventListener('click', () => {
+    const id = node.getAttribute('data-id');
+    showInfo(id);
+  });
+});
+
+// SVG connector positioning
+function positionConnectors() {
+  // SVG connectors use relative positioning via CSS
+  // The path already uses "M 50%,0 L 50%,100%"
+  // We need to position arrow polygons
+  document.querySelectorAll('.connector-layer').forEach(conn => {
+    const svg = conn.querySelector('svg');
+    const paths = svg.querySelectorAll('path');
+    const polygons = svg.querySelectorAll('polygon');
+    polygons.forEach((poly, i) => {
+      if (paths[i]) {
+        const length = paths[i].getTotalLength();
+        if (length > 0) {
+          const pt = paths[i].getPointAtLength(length);
+          poly.setAttribute('transform', `translate(${pt.x - 5}, ${pt.y - 14})`);
+        }
+      }
+    });
+  });
+}
+
+// Info panel data
+const infoData = {
+  'mode-a': {
+    title: 'Mode A — Show 展示',
+    body: `<strong>触发方式：</strong>用户说"深度分析这批银行"
+    <br><br><strong>工作流：</strong>
+    <br>1. 定位 Screen 最新 final_output.json
+    <br>2. 提取 depth_input 字段 → 候选银行列表
+    <br>3. 展示给用户确认
+    <br><br><strong>技术：</strong>主 session 直接读取 JSON，不 spawn 子 agent`
+  },
+  'mode-b': {
+    title: 'Mode B — 独立调用',
+    body: `<strong>触发方式：</strong>用户直接输入银行代码/名称
+    <br><br><strong>工作流：</strong>
+    <br>1. 解析输入的代码或名称
+    <br>2. 映射到标准 A 股代码（SH/SZ 前缀）
+    <br>3. 自动选择模式：1 家=single，2-5=streamlined，6-15=full
+    <br>4. 展示给用户确认
+    <br><br><strong>支持输入格式：</strong>
+    <br>600036 · 招商银行 · SH600036`
+  },
+  'phase0': {
+    title: 'Phase 0 — 预检 (Hard Gate)',
+    body: `<strong>Check A — 环境扫描：</strong>
+    <br>运行 env_scan.py → 检查 Python 版本、requests、PDF 提取库、搜索可用性
+    <br>如果 Python 或 requests 缺失 → FATAL 终止
+    <br><br><strong>Check B — Spawn 可用性：</strong>
+    <br>验证 sessions_spawn 是否可调用 → 不可用则 FATAL
+    <br><br><strong>Check C — 数据目录：</strong>
+    <br>从 batch_config.json 读取 data_home、batch_size 等参数
+    <br>创建 {data_home}/data/{today}/ 目录
+    <br>初始化 pipeline_state.json 和 pipeline_errors.log`
+  },
+  'phase1': {
+    title: 'Phase 1 — 银行列表确认',
+    body: `<strong>角色：</strong>管道的第一个人机交互点
+    <br><br><strong>展示内容：</strong>
+    <br>• 银行数量 & 名称（含代码）
+    <br>• 管道模式（single/streamlined/full）
+    <br>• 预期进度跟踪路径
+    <br><br><strong>用户操作：</strong>可以增删银行，可以提出关注的特定问题
+    <br><br><strong>确认后：</strong>立即进入自动模式（Phase 2-7 全自动），不再中断用户`
+  },
+  'l0a': {
+    title: 'L0a — PDF 发现',
+    body: `<strong>技术实现：</strong>discover_pdfs.py
+    <br><strong>后端：</strong>Cninfo API（主要）+ Eastmoney API（回退）
+    <br><br><strong>工作流：</strong>
+    <br>1. 运行 Python 脚本 → 生成 pdf_manifest_candidates.json 和每银行的 raw_announcements.json
+    <br>2. AI 主 session 人工校验预选结果
+    <br>3. 为每银行的 6 类文档（最新年报、上期年报、最新季报、最新年 Pillar 3、上期年 Pillar 3、最新季 Pillar 3）挑选最佳链接
+    <br>4. 不足时回退到 raw_announcements.json 搜索
+    <br>5. 写入 pdf_manifest.json
+    <br><br><strong>年份验证：</strong>交叉检查 notice_date 与预期财年，不匹配 → STALE_DATA
+    <br><strong>Pillar 3 可选：</strong>合并披露的银行标记 NOT_APPLICABLE，非错误`
+  },
+  'l0b': {
+    title: 'L0b — PDF 下载',
+    body: `<strong>技术实现：</strong>download_pdfs.py
+    <br><strong>3 层下载策略：</strong>
+    <br>1️⃣ Cninfo 直链（最快，最可靠）
+    <br>2️⃣ Eastmoney curl（回退）
+    <br>3️⃣ Chrome headless 浏览器（最后手段）
+    <br><br><strong>完整性检查：</strong>
+    <br>• LIKELY_COMPLETE — 正常
+    <br>• SUSPECT_SUMMARY — 标记供 L0c 分类
+    <br>• EXTREME_ANOMALY — 标记 DOWNLOAD_FAILED，跳过后续 L0c spawn
+    <br><br><strong>输出：</strong>download_status.json + {code}/raw/*.pdf
+    <br><strong>延迟：</strong>每请求间隔 2 秒，超时 30 秒`
+  },
+  'l0c': {
+    title: 'L0c — PDF → 结构化文件',
+    body: `<strong>技术实现：</strong>structurize_prompt.md（1 bank/spawn，批处理 3）
+    <br><strong>参考：</strong>assets/structured_template.md
+    <br><br><strong>七大 Section：</strong>
+    <br>A — 核心财务数据表格
+    <br>B — 资产负债表关键项
+    <br>C — 利润表关键项
+    <br>D — 管理层讨论与分析 (MD&A)
+    <br>E — 风险披露 & Pillar 3
+    <br>F — 公司治理信息
+    <br>G — 数据来源审计标记
+    <br><br><strong>KPI 门控：</strong>
+    <br>✅ structured.md 存在且 > 0 bytes
+    <br>✅ Section G 来源标记为 pdf_extraction
+    <br>✅ 至少 5/7 个 Section 有实质内容
+    <br>✅ Section A 至少 3 行财务数据
+    <br><br><strong>降级：</strong>失败 → redo × 1 → 仍失败 → STRUCT_FAILED`
+  },
+  'l0d': {
+    title: 'L0d — 表面指标提取',
+    body: `<strong>技术实现：</strong>leaf_extraction_prompt.md（1 bank/spawn，批处理 3）
+    <br><strong>参考：</strong>references/formula_graph.json（Section A/B 部分）
+    <br><br><strong>工作流：</strong>
+    <br>1. 从 structured.md 各 Section 提取原始财务指标
+    <br>2. 多关键词匹配跨表格验证
+    <br>3. 数值交叉验证
+    <br>4. 单位统一归一化（全部 → 百万元）
+    <br><br><strong>KPI 门控：</strong>
+    <br>✅ leaf_values.json 有效 JSON
+    <br>✅ 来源标记 pdf_extraction
+    <br>✅ ≥12 个指标
+    <br>✅ completeness ≥ 0.5
+    <br><br><strong>降级：</strong>失败 → redo × 1 → 仍失败 → LEAF_FAILED`
+  },
+  'l0e': {
+    title: 'L0e — 同行基准计算',
+    body: `<strong>技术实现：</strong>compute_benchmarks.py
+    <br><br><strong>职责：</strong>全局 Python 统计计算
+    <br><br><strong>计算内容：</strong>
+    <br>• 百分位排名（每指标每银行在同行中的位置）
+    <br>• 同行均值 & 中位数
+    <br>• 异常值检测（3-sigma / IQR）
+    <br>• 阈值校准
+    <br><br><strong>输入：</strong>合并所有银行 leaf_values.json → extracted_metrics.json
+    <br><strong>输出：</strong>peer_benchmark.json
+    <br><br><strong>降级：</strong>计算失败 → 创建最小占位 JSON 避免管道中断
+    <br><br><strong>注意：</strong>这是最后一个前置依赖。完成后 → 战略通知"
+    L0 数据准备完成"`
+  },
+  'l1': {
+    title: 'L1 — 定量分析师',
+    body: `<strong>技术实现：</strong>bank_scan_prompt.md（1 bank/spawn，批处理 3）
+    <br><strong>输入：</strong>leaf_values.json + structured.md（按需）+ formula_graph.json + peer_benchmark.json
+    <br><br><strong>核心职责：</strong>自主探索性计算分析
+    <br><br><strong>7 大分析模块：</strong>
+    <br>① 盈利质量分析 | ② 资产质量 | ③ 资本充足
+    <br>④ 流动性评估 | ⑤ 增长趋势 | ⑥ 估值比较 | ⑦ 综合信号
+    <br><br><strong>输出字段：</strong>
+    <br>📊 computed_metrics — 派生指标（值+百分位+红/黄旗）
+    <br>🔍 text_diff_signals — 跨期文本差异（消失/漂移/选择性披露）
+    <br>❓ curiosity_flags — ≥3 条好奇心信号，≥1 条 high severity
+    <br>📡 edge_handoff — L2 具体搜索主题
+    <br>📋 qual_handoff — L3 深读问题
+    <br><br><strong>KPI 门控：</strong>≥15 指标 + curiosity ≥3 + completeness ≥0.6
+    <br><strong>降级：</strong>redo × 2 → L1_FAILED（用 peer_benchmark 代理）`
+  },
+  'l2': {
+    title: 'L2 — 边缘信号 & 马赛克理论',
+    body: `<strong>技术实现：</strong>edge_search_prompt.md（1 全局 spawn）
+    <br><strong>输入：</strong>所有银行的 per_bank_scan.json（仅 edge_handoff 字段）
+    <br><strong>参考：</strong>references/mosaic_search_guide.md
+    <br><br><strong>搜索后端：</strong>
+    <br>1️⃣ searXNG（baidu + sogou + bing，可配置权重）
+    <br>2️⃣ 平台 web_search（回退）
+    <br><br><strong>5 大预设查询模板：</strong>
+    <br>📋 监管: "{bank_name} 监管 罚单 {year}"
+    <br>👥 员工: "{bank_name} 员工 裁员 欠薪"
+    <br>💼 招聘: "{bank_name} 招聘 {department}"
+    <br>📰 行业传闻: "{bank_name} {topic} 风险 传闻"
+    <br>🔗 供应链: "{bank_name} 股东 质押 关联"
+    <br><br><strong>搜索预算：</strong>20 次（batch_config.json 可配）
+    <br><strong>降级：</strong>失败 → L2_DEGRADED`
+  },
+  'l3': {
+    title: 'L3 — 定性深读',
+    body: `<strong>技术实现：</strong>qual_deep_dive_prompt.md（1 bank/spawn，批处理 3）
+    <br><strong>输入：</strong>structured.md + per_bank_scan.json（qual_handoff）+ user concerns
+    <br><strong>参考：</strong>references/question_compass.md
+    <br><br><strong>7 大模块深度阅读：</strong>
+    <br>① 管理层讨论分析 — 战略叙述一致性
+    <br>② 战略清晰度 — 长期方向与短期计划
+    <br>③ 风险披露评估 — 风险因素完整性
+    <br>④ 公司治理评估 — 董事会结构、关联交易
+    <br>⑤ 资本充足分析 — Pillar 3 披露深度
+    <br>⑥ 关联交易合规 — 关联方交易审查
+    <br>⑦ 综合叙事 — 整体管理层画像
+    <br><br><strong>KPI 门控：</strong>≥5 关键发现 + 三维评估 + 无模板占位符 + 来源 pdf_extraction
+    <br><strong>降级：</strong>redo × 2 → QUAL_DEGRADED（用 L1 markers 代理）
+    <br><br>完成后 → 战略通知"L3 定性分析完成"`
+  },
+  'l5a': {
+    title: 'L5a — Vice 评分',
+    body: `<strong>技术实现：</strong>vice_scoring_prompt.md（1 bank/spawn，批处理 3）
+    <br><strong>输入：</strong>per_bank_scan.json + per_bank_qual.json + edge_markers.json + peer_benchmark.json
+    <br><strong>参考：</strong>references/voh_framework.md
+    <br><br><strong>VOH 6 维子评分：</strong>
+    <br>🔵 dpr_stability — 分红稳定性（历年 DPR 波动性）
+    <br>🟢 dividend_resilience — 分红韧性（压力情景下）
+    <br>🟣 cdp — 资本充足度（数据来源: L0e）
+    <br>🟡 customer_quality — 客户质量（数据来源: L0e）
+    <br>🟠 marginal_profitability — 边际盈利能力
+    <br>🔴 long_termism — 长期主义信号
+    <br><br><strong>产出：</strong>
+    <br>📄 per_bank_voh.json — 评分卡（6 子分 + 5 级评级 + 好奇心信号）
+    <br>📝 depth_report.md — 单行完整报告（≥2000 字符）
+    <br><br><strong>好奇心信号要求：</strong>具体（指标+方向+幅度），禁止泛泛风险提示
+    <br><strong>降级：</strong>redo × 1 → L5a_DEGRADED`
+  },
+  'l5b': {
+    title: 'L5b — Chief 综合',
+    body: `<strong>技术实现：</strong>chief_synthesis_prompt.md（1 全局 spawn）
+    <br><strong>输入：</strong>所有银行的 per_bank_voh.json 评分卡（仅评分卡，不读原始数据）
+    <br><br><strong>硬约束 — 不重评不改分：</strong>
+    <br>Chief 仅汇总 Vice 评分。可疑分数在 Edge Cases 中标记但绝不修改
+    <br><br><strong>产出：</strong>
+    <br>📊 VOH 排名表（全部银行，含所有分量分数）
+    <br>🧩 ≥3 跨银行主题（含验证注释）
+    <br>🔭 ≥3 侦察建议（具体查询 + 数据来源）
+    <br>📦 final_output.json — 被 Layer 3 (Portfolio) 技能消费
+    <br>📝 synthesis_report.md — 综合深度报告（≥2000 字符）
+    <br><br><strong>KPI 门控：</strong>完整排名表 + ≥3 主题 + ≥3 侦察建议 + 不修改 Vice 分数
+    <br><strong>降级：</strong>redo × 1 → L5b_DEGRADED`
+  },
+  'phase8': {
+    title: 'Phase 8 — 最终报告',
+    body: `<strong>角色：</strong>管道的第二个也是最后一个 HITL 点
+    <br><br><strong>内容（500-800 词）：</strong>
+    <br>📋 分析概况 — N 家银行，X/5 层级完成
+    <br>📊 评级分布 — STRONG_BUY/BUY/HOLD/SELL/STRONG_SELL
+    <br>🏆 VOH Top 5 — 排名表
+    <br>❓ 追问问题 — 需进一步侦察的具体问题
+    <br>📁 文件路径 — 完整报告和审计底稿路径
+    <br><br><strong>不包含：</strong>指标值、财务数据、MD&A 原文
+    <br><br><strong>输出：</strong>final_output.json（被 hbs-bank-portfolio 技能消费）`
+  }
+};
+
+function showInfo(id) {
+  const panel = document.getElementById('info-panel');
+  const title = document.getElementById('info-title');
+  const body = document.getElementById('info-body');
+  const data = infoData[id];
+  if (data) {
+    title.textContent = data.title;
+    body.innerHTML = data.body;
+    panel.style.display = 'block';
+  }
+}
+
+// Fix connector arrow positions on load and resize
+function fixArrows() {
+  setTimeout(() => {
+    document.querySelectorAll('.connector-layer').forEach(conn => {
+      const svg = conn.querySelector('svg');
+      if (!svg) return;
+      const path = svg.querySelector('path');
+      const arrow = svg.querySelector('polygon');
+      if (path && arrow) {
+        try {
+          const len = path.getTotalLength();
+          if (len > 0) {
+            const pt = path.getPointAtLength(len);
+            const ptPrev = path.getPointAtLength(Math.max(0, len - 1));
+            const angle = Math.atan2(pt.y - ptPrev.y, pt.x - ptPrev.x) * 180 / Math.PI;
+            arrow.setAttribute('transform', `translate(${pt.x - 5}, ${pt.y - 14})`);
+          }
+        } catch(e) {}
+      }
+    });
+  }, 100);
+}
+
+window.addEventListener('load', fixArrows);
+window.addEventListener('resize', fixArrows);
+
+console.log('HBS-Bank-Depth Architecture Diagram loaded.');
+console.log('🖱 Hover any node to highlight related nodes and connections.');
+console.log('🖱 Click any node for detailed information.');
+</script>
+
+</div>
+</body>
+</html>

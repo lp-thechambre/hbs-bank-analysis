@@ -114,42 +114,69 @@ Immediately proceed to Phase 2.
 
 ## Phase 2: Layer 0 — Data Preparation
 
-### Step 0a: PDF Link Discovery + Prefilter
+### Step 0a: PDF Link Discovery + AI Triage
+
+**Division of labor**: Script fetches raw data → AI selects the 6 target PDFs.
+
+#### Part A — Script fetch (data preparation)
 
 Run: `python3 scripts/discover_pdfs.py --codes {code1} {code2} ... --data-dir {data_dir}`
 
-This produces TWO outputs:
-- `{data_dir}/{code}/raw_announcements.json` — full announcement list per bank (AI fallback)
+This produces TWO outputs for AI consumption:
 - `{data_dir}/pdf_manifest_candidates.json` — keyword-prefiltered candidates grouped into 3 pools: annual_report, quarterly_report, pillar3
+- `{data_dir}/{code}/raw_announcements.json` — full raw announcement list per bank (AI fallback for missing types)
 
-**AI triage workflow:**
+The script does NOT auto-select. It groups candidates by keyword match so AI can make the final call.
 
-1. Read `pdf_manifest_candidates.json`
-2. For each bank + each of the 6 target doc types, review the relevant candidate pool:
-   - **latest_annual_report** → from annual_report pool, pick the most recent year
-   - **prev_annual_report** → from annual_report pool, pick the second most recent year
-   - **latest_quarter_report** → from quarterly_report pool, pick the most recent quarter
-   - **latest_annual_pillar3** → from pillar3 pool, pick the most recent annual
-   - **prev_annual_pillar3** → from pillar3 pool, pick the second most recent annual
-   - **latest_quarter_pillar3** → from pillar3 pool, pick the most recent quarter
-3. For any doc type NOT found in candidates, fall back to `{code}/raw_announcements.json`:
-   - Search `title` and `columns[].name` fields for that bank
-   - Only fall back for the specific missing doc type — don't redo everything
-4. Year validation: cross-check `notice_date` against expected FY. Mismatch → mark STALE_DATA.
+#### Part B — AI triage (YOU pick the right PDFs)
+
+This is YOUR job. Do not skip it — the script only provides raw materials.
+
+1. Read `pdf_manifest_candidates.json`. For each bank, you'll find 3 candidate pools (`annual_report`, `quarterly_report`, `pillar3`) — each is an array of candidates sorted by time descending.
+
+2. For each bank, select exactly 6 target documents by reviewing the pools:
+
+   | Doc type | Where to look | How to pick |
+   |----------|--------------|-------------|
+   | **latest_annual_report** | annual_report pool | most recent annual (typically 2025 report published in 2026) |
+   | **prev_annual_report** | annual_report pool | second most recent (typically 2024 report) |
+   | **latest_quarter_report** | quarterly_report pool | most recent quarterly (e.g. 2026 Q1) |
+   | **latest_annual_pillar3** | pillar3 pool | matches latest annual report year |
+   | **prev_annual_pillar3** | pillar3 pool | matches previous annual report year |
+   | **latest_quarter_pillar3** | pillar3 pool | most recent quarterly pillar3 (e.g. 2026 Q1) |
+
+3. Source selection priority: **Cninfo candidates > Eastmoney candidates > raw_announcements.json fallback**
+
+4. If a doc type is NOT found in any candidate pool, fall back to `{code}/raw_announcements.json`:
+   - Search `title` and (for Eastmoney) `columns[].name` fields
+   - Only search for the specific missing doc type — don't redo everything
+
+5. Year validation: cross-check `notice_date` (or `announcementTime`) against expected FY. Mismatch → mark `STALE_DATA`.
 
 **Pillar 3 is OPTIONAL.** Some banks merge capital-adequacy disclosures into annual reports and do NOT publish separate Pillar 3 PDFs. If no Pillar 3 candidate exists after checking both candidates AND raw fallback, mark as `NOT_APPLICABLE` — this is not a pipeline error. Do NOT write scripts to force-find Pillar 3 documents.
 
-Write `{data_dir}/pdf_manifest.json`. PDF URL template: `https://pdf.dfcfw.com/pdf/H2_AN{art_code}_1.pdf`
+Write your selections to `{data_dir}/pdf_manifest.json`. Eastmoney PDF URL template: `https://pdf.dfcfw.com/pdf/H2_AN{art_code}_1.pdf`. Cninfo URL: constructed from `adjunctUrl` → `https://static.cninfo.com.cn/{adjunctUrl}`.
 
-### Step 0b: PDF Download
+**Hard rule**: Do NOT skip this triage. If you run the script and then immediately proceed to 0b, the pipeline will fail because `pdf_manifest.json` has not been written by you.
+
+### Step 0b: PDF Download + AI Verification
+
+**Division of labor**: Script downloads the PDFs → YOU verify completeness.
+
+#### Part A — Script download
 
 Run: `python3 scripts/download_pdfs.py --manifest {data_dir}/pdf_manifest.json --data-dir {data_dir}`
 
-Verify:
+The script reads `pdf_manifest.json` and attempts 3-tier download (Cninfo → Eastmoney curl → Chrome headless).
+
+#### Part B — AI verification (YOU check completeness)
+
+Do NOT proceed to 0c until you verify:
+
 1. Read `download_status.json`
 2. Cross-check: banks with status "available" have at least one PDF in `{data_dir}/{code}/raw/`
 3. Check `completeness_check`:
-   - EXTREME_ANOMALY → mark DOWNLOAD_FAILED
+   - EXTREME_ANOMALY → mark DOWNLOAD_FAILED, skip L0c spawn
    - SUSPECT_SUMMARY → flag for L0c triage
    - LIKELY_COMPLETE → normal
 4. Log failures to `pipeline_errors.log`
@@ -199,7 +226,18 @@ After all waves, merge into `extracted_metrics.json`.
 
 Run: `python3 scripts/compute_benchmarks.py --data-dir {data_dir}`
 
-Verify `peer_benchmark.json` exists. If failed: create minimal `{"error": "computation_failed", "insufficient_data": true}`.
+**This step is mandatory.** L1 (percentile rankings) and L5a (CDP/diversity L0e-source flag) depend on it.
+
+**KPI Gate L0e** (from `references/kpi_rubric.json` §L0e_benchmarks):
+1. peer_benchmark.json exists and is valid JSON (fatal)
+2. At least one metric has a non-null percentile field — proves real computation ran (fatal)
+3. At least 2 banks have benchmark data
+4. data_provenance.source = "peer_benchmark_computed" (fatal)
+5. Not an error placeholder — real data exists (fatal)
+
+Failed → redo once → still failed → mark L0e_FAILED.
+
+If L0e_FAILED: L1 will run without peer percentile rankings, L5a CDP/diversity scores must use ai_knowledge_base as source. Log to pipeline_errors.log and continue.
 
 **Strategic announce**:
 ```
@@ -355,6 +393,7 @@ After each layer:
 | PDF scanned image | Mark OCR_NEEDED, skip |
 | EXTREME_ANOMALY PDF | Mark STRUCT_FAILED, skip L0c spawn |
 | Leaf extraction fails | Mark NOT_FOUND, derived → data_gap |
+| Peer benchmark computation fails | Mark L0e_FAILED — L1 runs without percentiles, L5a uses ai_knowledge_base |
 | L1 spawn timeout | Mark L1_FAILED, use peer_benchmark proxy |
 | L3 spawn timeout | Use L1 markers for L5a/L5b |
 | L2 spawn timeout | Skip edge signals |
@@ -367,6 +406,7 @@ After each layer:
 |--------|---------|
 | STRUCT_FAILED | structured.md missing or AI-fabricated |
 | LEAF_FAILED | leaf_values.json missing or insufficient |
+| L0e_FAILED | peer_benchmark.json missing or incomplete — L1 runs without percentiles, L5a uses ai_knowledge_base |
 | L1_FAILED | per_bank_scan missing |
 | L2_DEGRADED | edge search did not execute |
 | QUAL_DEGRADED | qualitative analysis did not execute |

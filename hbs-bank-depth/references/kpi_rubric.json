@@ -77,6 +77,43 @@
         }
       ]
     },
+    "L0e_benchmarks": {
+      "description": "Peer benchmark computation quality",
+      "pass_threshold": 3,
+      "max_redo": 1,
+      "checks": [
+        {
+          "id": "file_exists",
+          "description": "peer_benchmark.json 存在且为有效 JSON",
+          "check": "peer_benchmark.json exists and is valid JSON",
+          "fatal": true
+        },
+        {
+          "id": "has_percentiles",
+          "description": "至少有一个指标包含 percentile 字段（证明计算真实执行）",
+          "check": "at least one metric has a non-null percentile field",
+          "fatal": true
+        },
+        {
+          "id": "min_banks",
+          "description": "覆盖率至少 2 家银行（否则无同行比较意义）",
+          "check": "at least 2 banks have benchmark data",
+          "fatal": false
+        },
+        {
+          "id": "data_provenance",
+          "description": "data_provenance.source = peer_benchmark_computed",
+          "check": "data_provenance.source is 'peer_benchmark_computed'",
+          "fatal": true
+        },
+        {
+          "id": "no_placeholder",
+          "description": "不是错误占位文件（不是 {\"error\": \"computation_failed\"}）",
+          "check": "output is not just an error placeholder — real benchmark data exists",
+          "fatal": true
+        }
+      ]
+    },
     "L1_bank_scan": {
       "description": "Per-bank quantitative scan + text diff quality",
       "pass_threshold": 4,
