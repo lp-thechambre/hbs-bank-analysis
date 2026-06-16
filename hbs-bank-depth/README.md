@@ -18,8 +18,8 @@ HBS-Bank-Depth takes a filtered list of A-share listed banks and executes a full
 
 ```
 Layer 0: Data Preparation
-  0a: AI discovers PDF links + timing calibration
-  0b: Python batch downloads PDFs (3-tier: Cninfo → Eastmoney → browser)
+  0a: Script fetches + AI triages PDF selections
+  0b: Script downloads PDFs + AI verifies completeness (3-tier)
   0c: PDF → structured files (1 spawn/bank, batch=3)
   0d: Leaf metric extraction (1 spawn/bank, batch=3)
   0e: Python peer benchmark computation
@@ -154,8 +154,11 @@ Plus a ~500-800 token brief in the main session with ratings summary, VOH top 5,
 
 ```
 hbs-bank-depth/
-├── SKILL.md                       # Skill entry point (OpenClaw format)
-├── CLAUDE.md                      # Claude Code adaptation guide
+├── skill-md for openclaw/
+│   └── SKILL.md                   # OpenClaw entry point
+├── skill-md for claude-code/
+│   └── SKILL.md                   # Claude Code entry point
+├── CLAUDE.md                      # Claude Code project guide
 ├── README.md                      # This file
 ├── LICENSE                        # Apache 2.0
 ├── SETUP.md                       # Setup & platform adaptation
