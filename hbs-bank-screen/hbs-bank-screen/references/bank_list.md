@@ -43,7 +43,7 @@
 | 25 | SH601528 | 瑞丰银行 | traditional_commercial |
 | 26 | SH601860 | 紫金银行 | traditional_commercial |
 | 27 | SH601187 | 厦门银行 | traditional_commercial |
-| 28 | SH601825 | 沪农商行 | traditional_commercial |
+| 28 | SH600919 | 江苏银行 | traditional_commercial |
 | 29 | SH601665 | 齐鲁银行 | traditional_commercial |
 | 30 | SH601128 | 常熟银行 | traditional_commercial |
 | 31 | SH601077 | 渝农商行 | traditional_commercial |
@@ -58,7 +58,7 @@
 | 35 | SZ002807 | 江阴银行 | traditional_commercial |
 | 36 | SZ002958 | 青农商行 | traditional_commercial |
 | 37 | SH600928 | 西安银行 | traditional_commercial |
-| 38 | SH600919 | 江苏银行 | traditional_commercial |
+| 38 | SH601825 | 沪农商行 | traditional_commercial |
 | 39 | SZ002936 | 郑州银行 | traditional_commercial |
 | 40 | SZ002948 | 青岛银行 | traditional_commercial |
 | 41 | SZ001227 | 兰州银行 | traditional_commercial |

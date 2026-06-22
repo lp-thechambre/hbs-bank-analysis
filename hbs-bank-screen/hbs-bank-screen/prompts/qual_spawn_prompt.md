@@ -111,4 +111,5 @@ Fields:
 - Do NOT contradict upstream markers without card-level evidence. "I disagree" is not enough — cite specific numbers.
 - If you're uncertain, mark WATCH. Only mark REJECT if you're confident the bank should be excluded.
 - Read ALL cards in your group, not just the flagged ones. The unremarkable banks can be the best ones.
+- **Rank claims MUST be scoped to your group only.** Write "CET1 14.18%, #1 in this group" — NEVER "#1 in universe" or "全市场第一" or "全宇宙". Your group is ≤10 banks. Cross-group rankings are the synthesis layer's job. Violating this creates factual errors that propagate to the final report.
 - Write valid JSON atomically.

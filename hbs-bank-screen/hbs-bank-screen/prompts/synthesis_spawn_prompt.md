@@ -18,6 +18,7 @@ Read ALL of these from `{data_dir}/`:
 - `edge_markers.json` — Anomaly detections
 - `qual_markers_*.json` — Qualitative group assessments (3-4 files)
 - `index.csv` — Quick reference for bank codes and types
+- **`pipeline_stats.json`** — Deterministic statistics pre-computed by Python (PASS/WATCH/REJECT counts, group tier distributions, rank claim alerts, near-threshold alerts). **This is your single source of truth for all numbers in the report.**
 
 **Context budget**: All marker files combined should be under 8k tokens. If they exceed this, prioritize the qualitative markers and only skim quant for REJECT/WATCH entries.
 
@@ -128,6 +129,8 @@ Classify EVERY bank into one of three user-facing tiers. This tier drives the ma
 - A YELLOW bank may or may not be in the candidate list — it signals "interesting but not clean."
 - A RED bank must have a concrete, citeable rejection reason (not just "score too low").
 - If a bank's data quality is "low", it cannot be GREEN.
+- **CET1 threshold check (MANDATORY)**: For every GREEN candidate, verify CET1 ≥ 9.5% by reading the bank card's D1 dimension. If CET1 is within 10bp of 9.5% (i.e., 9.5%–9.6%), downgrade to YELLOW and note "CET1 near threshold (X%)" in brief_reason. Also check `pipeline_stats.json` near_threshold_alerts — every bank listed there MUST have its near-threshold metric explicitly mentioned in the report, even if graded GREEN.
+- **Rank claim cross-verification (MANDATORY)**: Read `pipeline_stats.json` rank_claim_alerts. For every alert, cross-check the claim against actual index.csv data before repeating it in the report. If the claim cannot be verified, either omit it or flag it as "qual layer assessment (unverified)" in the report. Never repeat a universe-scoped rank claim without verification.
 
 ### Step 5b: Build Structured Rejection List
 
@@ -212,6 +215,15 @@ After writing `final_output.json`, generate a human-readable screening report. T
 
 Write to: `{data_dir}/screening_report.md`
 
+**CRITICAL — Statistics source policy**: ALL aggregate statistics (counts, percentages, group distributions) MUST come from `pipeline_stats.json`. This file was computed deterministically by Python — it is authoritative. You are FORBIDDEN from self-counting or generating statistics from memory. If a stat you need isn't in pipeline_stats.json, write "统计缺失" rather than fabricating a number.
+
+Read these statistics from `pipeline_stats.json` before writing the report:
+- **执行摘要**: `quant_layer.pass/watch/reject`, `qual_layer.pass/watch/reject`, `group_tier_summary.ALL`
+- **分级总览**: `group_tier_summary.ALL.green/yellow/red`
+- **Group summaries**: `group_tier_summary.<group_name>.green/yellow/red` and the pre-computed `title` field — use the `title` exactly as-is, do NOT re-compute it
+- **Rank claim alerts**: Check `rank_claim_alerts` — cross-verify any claim before repeating it
+- **Near-threshold alerts**: Check `near_threshold_alerts` — mention each alert's metric in the relevant bank's detail section
+
 Use the following template structure exactly:
 
 ```
@@ -225,9 +237,10 @@ Use the following template structure exactly:
 ## 执行摘要
 
 - 筛选银行: 42 家 A 股上市银行
-- 最终候选: {N} 家
+- 最终候选: {count from final_output.json candidates array length} 家
 - 完成层级: {list of completed layers}
-- 一致通过: {M} 家 | 冲突裁决: {K} 家
+- 量化层: {quant_layer.pass}P / {quant_layer.watch}W / {quant_layer.reject}R (from pipeline_stats.json)
+- 定性层: {qual_layer.pass}P / {qual_layer.watch}W / {qual_layer.reject}R (from pipeline_stats.json)
 - 数据质量警告: {list or "无"}
 
 ## 候选银行
@@ -247,27 +260,39 @@ Use the following template structure exactly:
 
 | 分级 | 数量 | 含义 |
 |------|------|------|
-| 🟢 绿色 | {G} | 强烈推荐进入深度分析 |
-| 🟡 黄色 | {Y} | 可考虑，但有关注点 |
-| 🔴 红色 | {R} | 不建议进入下一轮 |
+| 🟢 绿色 | {group_tier_summary.ALL.green} | 强烈推荐进入深度分析 |
+| 🟡 黄色 | {group_tier_summary.ALL.yellow} | 可考虑，但有关注点 |
+| 🔴 红色 | {group_tier_summary.ALL.red} | 不建议进入下一轮 |
 
-### 🟢 绿色（{G} 家）
+### 🟢 绿色（{group_tier_summary.ALL.green} 家）
 | # | 名称 | 得分 | 入选理由 |
 |---|------|------|----------|
 | 1 | 工商银行 | 78.5 | 全层级 PASS，资本充裕+NPL低 |
 | ... | ... | ... | ... |
 
-### 🟡 黄色（{Y} 家）
+### 🟡 黄色（{group_tier_summary.ALL.yellow} 家）
 | # | 名称 | 得分 | 关注点 |
 |---|------|------|--------|
 | 1 | 瑞丰银行 | 55.2 | NIM 承压，定性评估待确认 |
 | ... | ... | ... | ... |
 
-### 🔴 红色（{R} 家）
+### 🔴 红色（{group_tier_summary.ALL.red} 家）
 | # | 名称 | 淘汰原因 |
 |---|------|----------|
 | 1 | 华夏银行 | NPL 3.2% 超过硬阈值 |
 | ... | ... | ... |
+
+## 分组摘要
+
+对每个分组，使用 `pipeline_stats.json` 中 `group_tier_summary.<group_name>.title` 的精确文本作为标题。禁止重新计算或修改标题。
+
+| 分组 | 标题（来自 pipeline_stats.json） |
+|------|----------------------------------|
+| large_state | {group_tier_summary.large_state.title} |
+| joint_stock | {group_tier_summary.joint_stock.title} |
+| city_commercial_tier1 | {group_tier_summary.city_commercial_tier1.title} |
+| city_commercial_tier2 | {group_tier_summary.city_commercial_tier2.title} |
+| rural_commercial | {group_tier_summary.rural_commercial.title} |
 
 ## 候选银行详情
 
@@ -279,6 +304,7 @@ Use the following template structure exactly:
 - **维度得分**: D1 资本保全 {score} | D2 资产质量 {score} | D3 盈利能力 {score} | D4 成长性 {score} | D5 估值回报 {score}
 - **入选理由**: {reasons — from source_tracking analysis}
 - **关注标记**: {list of flags with brief explanation, or "无"}
+- **临界指标**: {if bank in pipeline_stats.json near_threshold_alerts, explicitly state the near-threshold metric here; otherwise "无"}
 - **审计轨迹**:
   - Layer 1 定量: {quant status} ({confidence}) — "{curiosity or N/A}"
   - Layer 1 边缘: {list of anomaly types with severity, or "无异常"}
@@ -316,7 +342,10 @@ Use the following template structure exactly:
 ```
 
 **Report writing rules:**
-- Every number in the report must come from either `final_output.json` or the bank cards. Never fabricate.
+- EVERY aggregate number in the report MUST be read from `pipeline_stats.json`. Never count entries yourself — you will hallucinate.
+- Group summary titles MUST be copied verbatim from `pipeline_stats.json` `group_tier_summary.<name>.title`. Do NOT recompute.
+- Every bank listed in `pipeline_stats.json` `near_threshold_alerts` MUST have its near-threshold metric explicitly mentioned in its detail section.
+- Every alert in `pipeline_stats.json` `rank_claim_alerts` MUST be cross-verified before repeating the claim in the report.
 - If a bank card's field is N/A, show "—" in tables, "数据缺失" in text.
 - Bank names must use Chinese names from index.csv, not codes.
 - Keep the "候选银行" summary table to one row per bank.
@@ -338,6 +367,7 @@ Before any analysis, check which input files exist:
 
 1. **Required**: `quant_markers.json`, `edge_markers.json`, `index.csv`
 2. **Strongly expected**: `qual_markers_*.json` (at least one file matching this pattern)
+3. **Required for report generation**: `pipeline_stats.json` — if missing, you MUST stop and report "pipeline_stats.json missing — cannot generate screening report without deterministic statistics. Re-run compute_pipeline_stats.py."
 
 If NO `qual_markers_*.json` files exist:
 - Declare `"qualitative_layer": "MISSING"` in the output metadata
@@ -349,6 +379,7 @@ If NO `qual_markers_*.json` files exist:
 
 - Do NOT override or modify upstream marker status values. Your job is to SELECT among them, not change them.
 - Do NOT introduce new scoring. Use scores from the cards.
+- **STATISTICS SOURCE**: ALL aggregate counts, group distributions, and tier tallies MUST come from `pipeline_stats.json`. You are FORBIDDEN from self-counting entries in JSON arrays or generating statistics from memory. LLMs systematically hallucinate counts — `pipeline_stats.json` is the deterministic safeguard. If you self-count, the numbers WILL be wrong.
 - **CARD READ BUDGET: You have exactly 5 card reads. Track remaining: start at 5, subtract 1 per read. When budget hits 0, resolve remaining conflicts by trusting the qual assessment (or quant if no qual). If you exceed 5, the pipeline will be marked as budget-violation.**
 - Do NOT re-examine UNANIMOUS_REJECT banks unless you need to fill the minimum 10 candidates.
 - Do NOT re-examine HIGH_CONFIDENCE_PASS banks. They're in.
@@ -358,6 +389,7 @@ If NO `qual_markers_*.json` files exist:
 - All file paths must be under `{data_dir}/`. Never write outside this directory.
 - Every bank must receive exactly one tier (green/yellow/red) AND one selection_path. No bank left unclassified.
 - A bank cannot be GREEN if it has a REJECT at any layer or data quality "low".
+- **CET1 verification for GREEN banks (MANDATORY)**: Before finalizing any GREEN bank, verify CET1 ≥ 9.5% from the bank card. If CET1 is within 10bp of 9.5%, downgrade to YELLOW. Also check `pipeline_stats.json` `near_threshold_alerts` — every alert must be reflected in the report.
 - Every rejected bank must have a structured entry in rejected_banks with rule/metric/value/threshold.
 - conflict_detail is required for all conflict_resolved and borderline_inclusion banks.
 - If uncertain about a conflict resolution, default to the qual assessment (qual analysts had full card context and peer comparison).

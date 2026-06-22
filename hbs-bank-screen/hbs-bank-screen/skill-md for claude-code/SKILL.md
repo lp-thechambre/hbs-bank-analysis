@@ -42,8 +42,9 @@ Execution order:
 2. Main session runs Python scripts (fetch + generate cards) via **Bash**
 3. Main session spawns Quant + Edge Agents in parallel (2 Agents)
 4. Main session spawns Qual × 5 groups in parallel
-5. Main session spawns Synthesis Agent (1 Agent)
-6. Main session displays results to user
+5. Main session runs `compute_pipeline_stats.py` to generate deterministic statistics
+6. Main session spawns Synthesis Agent (1 Agent)
+7. Main session displays results to user
 
 ### 4. Synthesis as Judge, Not Scorer
 
@@ -58,6 +59,7 @@ data/YYYY-MM-DD/
 ├── cards/*.md
 ├── quant_markers.json, edge_markers.json
 ├── qual_markers_*.json
+├── pipeline_stats.json
 ├── final_output.json, screening_report.md
 └── analysis_trail.md, pipeline_errors.log
 ```
@@ -106,19 +108,31 @@ Input: cards/, quant_markers.json, edge_markers.json. Output: qual_markers_{grou
 
 KPI: per-group file_exists, ≥80% banks assessed.
 
-### Step 5: Layer 3 — Synthesis (1 Agent)
+### Step 5: Pipeline Statistics (Main Session, Deterministic)
+
+**Before spawning synthesis**, run the deterministic statistics computer via **Bash**:
+
+```bash
+python3 scripts/compute_pipeline_stats.py --data-dir {data_dir}
+```
+
+This produces `{data_dir}/pipeline_stats.json` with exact PASS/WATCH/REJECT counts, group tier distributions, rank claim alerts, and near-threshold alerts — all counted deterministically by Python.
+
+KPI: pipeline_stats.json exists with quant_layer.total > 0.
+
+### Step 6: Layer 3 — Synthesis (1 Agent)
 
 Launch **one Synthesis Agent**: load `prompts/synthesis_spawn_prompt.md`. Output: final_output.json + screening_report.md.
 
-Input: ALL marker files in {data_dir}/.
+Input: ALL marker files in {data_dir}/ + pipeline_stats.json.
 
 KPI: 10-15 candidates, rejection reasons, output_schema valid, report exists.
 
-### Step 6: Compile Analysis Trail
+### Step 7: Compile Analysis Trail
 
 Read all marker files + final_output.json. Write `{data_dir}/analysis_trail.md`.
 
-### Step 7: Display Results
+### Step 8: Display Results
 
 Read final_output.json. Present tier summary to user. Ask if they want to run depth analysis.
 
@@ -139,6 +153,7 @@ Three deliverable files:
 | Quant Agent fails | Re-spawn once. DO NOT proceed without quant |
 | Edge Agent fails | Re-spawn once. Proceed without edge if still failing |
 | Qual Agent fails | Re-spawn failed groups once. OK if ≥3/5 groups succeed |
+| Pipeline stats fails | Retry once. Warn about LLM self-counting risk if proceeding in degraded mode |
 | Synthesis Agent fails | Re-spawn once. Best-effort report if still failing |
 
 ## Platform
