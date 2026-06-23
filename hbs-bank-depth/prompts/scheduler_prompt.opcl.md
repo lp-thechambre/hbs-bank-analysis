@@ -191,7 +191,7 @@ For remaining banks, spawn `prompts/structurize_prompt.md` (1 bank/spawn).
 
 For each wave:
 1. Spawn all banks in parallel via `sessions_spawn`
-2. Pass: `{code}`, `{data_dir}`, `assets/structured_template.md`, `{spawn_timeout_seconds}`
+2. Pass: `{code}`, `{data_dir}`, `{data_dir}/pdf_manifest.json`, `assets/structured_template.md`, `{spawn_timeout_seconds}`
 3. Wait for all spawns
 4. Run KPI verification
 
@@ -200,6 +200,7 @@ For each wave:
 2. Section G data provenance = "pdf_extraction" (fatal)
 3. Sections A-G: at least 5 have content
 4. Section A contains ≥ 3 rows of financial data
+5. Section G documents_structured ≥ 2 (warn if only 1 — single-document runs lose quarterly data)
 
 Failed → redo once → still failed → mark STRUCT_FAILED.
 

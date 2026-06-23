@@ -144,8 +144,10 @@ def compute_deterministic_voh_scores(all_bank_data: dict) -> dict:
     diversity_scores = {}
     valid_codes = [c for c, m in metrics.items()
                    if all(v is not None for v in m.values())]
+    cohort_size = len(valid_codes)
+    diversity_sample_warning = None
 
-    if len(valid_codes) >= 2:
+    if cohort_size >= 2:
         # Normalize each dimension to [0, 1] across all banks
         dims = ["ROE", "NIM", "NPL_ratio"]
         mins, maxs = {}, {}
@@ -182,7 +184,21 @@ def compute_deterministic_voh_scores(all_bank_data: dict) -> dict:
                 "diversity_score": score,
                 "distance_percentile": round(rank * 100, 1),
                 "dimensions": {dim: round(metrics[code][dim], 2) for dim in dims},
+                "cohort_size": cohort_size,
             }
+
+        # Small-sample assessment
+        if cohort_size < 5:
+            diversity_sample_warning = (
+                f"Diversity cohort has only {cohort_size} banks with complete ROE/NIM/NPL data. "
+                "Percentile ranking across < 5 banks produces low-confidence discrimination. "
+                "Consider reducing diversity weight from 0.25 to 0.10–0.15 for this run."
+            )
+        elif cohort_size < 10:
+            diversity_sample_warning = (
+                f"Diversity cohort size = {cohort_size}. "
+                "Percentile ranking is moderately reliable. Treat extreme scores (top/bottom 10%) with caution."
+            )
 
     # Fill missing with sector proxy
     for code in all_bank_data:
@@ -191,11 +207,36 @@ def compute_deterministic_voh_scores(all_bank_data: dict) -> dict:
                 "avg_euclidean_distance": None,
                 "diversity_score": 60,
                 "note": "Cannot compute diversity — missing ROE/NIM/NPL data. Using sector proxy (60).",
+                "cohort_size": cohort_size,
             }
+
+    # Per-type small-sample audit
+    type_group_counts = {}
+    for code in all_bank_data:
+        bt = all_bank_data[code].get("bank_type", "unknown")
+        type_group_counts[bt] = type_group_counts.get(bt, 0) + 1
+
+    small_types = [bt for bt, n in type_group_counts.items() if n < 3]
+    type_audit_note = None
+    if small_types:
+        type_audit_note = (
+            f"Bank types with < 3 banks in cohort: {small_types}. "
+            "Within-type peer benchmarks for these types are unreliable — "
+            "downstream analysis should prefer full-universe percentiles."
+        )
 
     return {
         "cdp": cdp_scores,
         "diversity": diversity_scores,
+        "diversity_metadata": {
+            "cohort_size": cohort_size,
+            "small_sample_warning": diversity_sample_warning,
+            "type_group_counts": type_group_counts,
+            "type_audit_note": type_audit_note,
+            "diversity_weight_recommendation": (
+                0.10 if cohort_size < 5 else (0.15 if cohort_size < 10 else 0.25)
+            ),
+        },
         "note": "CDP and Diversity scores computed deterministically from leaf_values.json. "
                 "These replace AI-generated defaults in L5 synthesis to prevent hallucination/clustering.",
     }
@@ -397,6 +438,11 @@ def main():
     if div_scores:
         div_vals = [s["diversity_score"] for s in div_scores.values() if s.get("diversity_score")]
         print(f"  Diversity scores: {len(div_vals)} banks, range [{min(div_vals)}-{max(div_vals)}]")
+        div_meta = voh_pre.get("diversity_metadata", {})
+        if div_meta.get("small_sample_warning"):
+            print(f"  WARNING: {div_meta['small_sample_warning']}")
+        if div_meta.get("type_audit_note"):
+            print(f"  WARNING: {div_meta['type_audit_note']}")
 
     # Print type group sizes
     for bt, count in sorted(banks_per_type.items()):

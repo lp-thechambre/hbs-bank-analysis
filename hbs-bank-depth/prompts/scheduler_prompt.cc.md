@@ -211,7 +211,8 @@ Agent({
 })
 ```
 
-Pass: `{code}`, `{data_dir}`, `assets/structured_template.md`.
+Pass: `{code}`, `{data_dir}`, `{data_dir}/pdf_manifest.json`, `assets/structured_template.md`.
+**Include pdf_manifest.json** so the structurize agent knows which doc_type each PDF is (latest_annual_report vs latest_quarter_report) and can enforce the dual-document mandate.
 
 **Wave logic**: execute Agents for batch_size banks **concurrently** (all Agent tool calls in a single message). Wait for all results. Then proceed to next wave.
 
@@ -220,6 +221,8 @@ Pass: `{code}`, `{data_dir}`, `assets/structured_template.md`.
 2. Section G data provenance = "pdf_extraction" (fatal)
 3. Sections A-G: at least 5 have content
 4. Section A contains ≥ 3 rows of financial data
+5. Section G documents_structured ≥ 2 (warn if only 1 — single-document runs lose quarterly data)
+6. Section G must record both primary (annual) and secondary (quarterly) document types
 
 Failed → redo once → still failed → mark STRUCT_FAILED.
 

@@ -43,8 +43,9 @@ Also extract any metric listed in `formula_graph.json` → `deep_metrics_on_dema
 
 1. Load `leaf_values.json`. Note any `NOT_FOUND` or `low` confidence metrics.
 2. Load `peer_benchmark.json`. Understand where this bank stands on core metrics.
-3. Skim `structured.md` Section G (Metadata) — any extraction issues to be aware of?
-4. Form a preliminary picture: What kind of bank is this? What jumps out?
+3. Skim `structured.md` Section G (Metadata) — which documents were structured? Note if quarterly report is missing.
+4. **Quarterly cross-reference (MANDATORY)**: Compare CET1, SML migration, provision coverage, and NPL ratio between the annual report and the quarterly report. Record any significant changes (>10bp for CET1, >5pp for migration rates) in `quarterly_cross_reference.significant_changes`. If no quarterly report was structured, explicitly state `available: false` and note the risk: "Q1 data (most recent CET1 changes, SML migration, regulatory actions) not available for analysis."
+5. Form a preliminary picture: What kind of bank is this? What jumps out?
 
 ### Phase 2: Autonomous Formula Exploration
 
@@ -92,6 +93,69 @@ For each computed metric, look up its percentile in `peer_benchmark.json`:
 - Within the bank's type group
 Flag metrics at P10 or P90 as noteworthy.
 
+### Phase 4b: Marginal Metric Trend Analysis (MANDATORY if prev_annual_report structured)
+
+Marginal metrics measure the efficiency of incremental business — they are THE most diagnostic indicators of whether balance sheet growth is creating or destroying value. A single-period computation (FY2025 vs FY2024) tells you the current direction. Two-period computation (FY2024 vs FY2023) tells you whether the problem is accelerating or stabilizing.
+
+**Required two-period computation for these marginal metrics:**
+
+| Metric | FY2025 vs FY2024 | FY2024 vs FY2023 | Trend |
+|--------|-----------------|-----------------|-------|
+| marginal_asset_output | compute | compute | accelerating / decelerating / stable |
+| marginal_interest_efficiency | compute | compute | same |
+| marginal_credit_cost | compute | compute | same |
+| marginal_risk_output | compute | compute | same |
+| npl_formation_rate | compute | compute | same |
+
+FY2023 data is available in the 2024 annual report's "上期" (prior period) column — use the 2024 annual report's comparative data. Record period as `FY2024 vs FY2023` and confidence as `medium` (not directly from FY2023 annual report, from FY2024 comparatives).
+
+**Trend assignment:**
+- Accelerating: metric moved in the SAME direction in both periods AND the second period's change magnitude ≥ first period
+- Decelerating: metric moved in the same direction but magnitude is decreasing
+- Reversing: metric changed direction between periods
+- Stable: both periods within ±10% of each other
+
+**Output**: Each marginal metric in `computed_metrics` must have a `trend` field: `{"period_1": "FY2025 vs FY2024", "value_1": X, "period_2": "FY2024 vs FY2023", "value_2": Y, "direction": "accelerating|decelerating|reversing|stable"}`.
+
+If FY2023 data is unavailable for a specific metric, mark `trend: "insufficient_data"` and explain why.
+
+### Phase 4c: Restatement Detection (MANDATORY when prev_annual_report structured)
+
+When the 2025 annual report restates prior-year figures, the FY2024 values in the 2025 report's "上期" column will DIFFER from the FY2024 values in the 2024 annual report's "本期" column. This is one of the strongest integrity signals in financial analysis — restatements can indicate accounting policy changes, error corrections, or earnings management.
+
+**Restatement check procedure:**
+
+Read structured.md: compare A1 (2025 report) FY2024 values against A1b (2024 report) FY2024 values for these key metrics:
+
+| Metric | A1 FY2024 (from 2025 report) | A1b FY2024 (from 2024 report) | Deviation |
+|--------|------------------------------|-------------------------------|-----------|
+| Total assets | | | |
+| Total loans | | | |
+| Total deposits | | | |
+| Net profit | | | |
+| Total operating income | | | |
+| Total equity | | | |
+| NPL ratio | | | |
+| CET1 ratio | | | |
+
+**Flag rules:**
+- Deviation > 5% → `restatement_flag: "red"` — material prior-period adjustment, integrity concern
+- Deviation 1-5% → `restatement_flag: "yellow"` — requires explanation
+- Deviation < 1% → `restatement_flag: "none"` — normal rounding
+- Both values NOT_FOUND → insufficient_data
+
+**Output**: Add a `restatement_check` object to `computed_metrics`:
+```json
+"restatement_check": {
+  "available": true,
+  "deviations_found": ["net_profit: +3.2%"],
+  "flag": "yellow",
+  "detail": "FY2024 net profit in 2025 report (94,229M) differs from 2024 report (91,347M) by +3.2% — possible accounting policy change or restatement. Flag for L3 qualitative review."
+}
+```
+
+If no deviations >1% found: `"flag": "none", "detail": "All FY2024 cross-report values within 1% tolerance."`
+
 ### Phase 5: Text Diff Analysis
 
 Read `structured.md` Section C (MD&A). Compare disclosure patterns across periods:
@@ -100,8 +164,9 @@ Read `structured.md` Section C (MD&A). Compare disclosure patterns across period
 - **LANGUAGE_DRIFT**: Tone shift on specific risks?
 - **ATTRIBUTION_SHIFT**: External vs internal blame for problems?
 - **SELECTIVE_DISCLOSURE**: Favorable metrics prominent, unfavorable buried?
+- **RESTATEMENT_NARRATIVE**: If Phase 4c found deviations, does the MD&A explain them? If restatements exist but MD&A is silent → integrity red flag.
 
-Cross-validate each text signal against quantitative findings.
+Cross-validate each text signal against quantitative findings. Each signal MUST reference the specific metric or passage that triggered it.
 
 ### Phase 6: Curiosity Flagging & Handoff
 
@@ -188,7 +253,9 @@ Write `{data_dir}/{code}/per_bank_scan.json`. The structure below is **non-negot
 | `bank_name_zh` | **YES** | string | Bank Chinese name |
 | `bank_type` | **YES** | string | One of: SOB / JSB / CityCo / RuralCo |
 | `analysis_timestamp` | **YES** | string | ISO timestamp |
-| `data_period` | **YES** | string | e.g. "FY2025" |
+| `data_period` | **YES** | string | e.g. "FY2025 (annual) + 2026Q1 (quarterly)". MUST enumerate BOTH periods if both were structured. If only one document was structured, state which one and flag as "single-document" in completeness_notes. |
+| `data_periods_structured` | **YES** | array of strings | List of doc_types that were actually structured, e.g. ["latest_annual_report", "latest_quarter_report"]. Used to detect single-document runs. |
+| `quarterly_cross_reference` | **YES** | object | `{"available": true/false, "metrics_updated": ["CET1", "SML_migration", ...], "significant_changes": "string or null"}`. If quarterly report was structured, list which metrics were updated from it. If no quarterly report was available, set `available: false`. |
 | `completeness` | **YES** | number | 0-1, `formulas_computed / formulas_relevant` |
 | `completeness_notes` | **YES** | array of strings | Per-category completeness breakdown |
 | `computed_metrics` | **YES** | object | `{ "METRIC_NAME": MetricValue, ... }` — use uppercase metric names as keys |
@@ -283,7 +350,7 @@ You MAY add supplementary fields (`formula`, `inputs`, `analysis`, `cross_check`
 ## Check Before Finishing
 
 - [ ] All 15 mandatory top-level keys present in output JSON?
-- [ ] `code`, `bank_name_zh`, `bank_type`, `analysis_timestamp`, `data_period` all non-empty strings?
+- [ ] `code`, `bank_name_zh`, `bank_type`, `analysis_timestamp`, `data_period`, `data_periods_structured`, `quarterly_cross_reference` all present and non-empty?
 - [ ] Every metric in `computed_metrics` has all 5 required fields: `value`, `unit`, `period`, `peer_percentile`, `flag`?
 - [ ] `completeness` is a number (not a string)?
 - [ ] JSON syntax valid — run `python3 -c "import json; json.load(open('{data_dir}/{code}/per_bank_scan.json'))"` — fix if it fails?

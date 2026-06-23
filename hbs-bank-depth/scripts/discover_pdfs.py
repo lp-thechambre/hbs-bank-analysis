@@ -40,7 +40,8 @@ USER_AGENTS = [
 
 BANK_COOLDOWN = 4.0
 REQUEST_DELAY = 1.5
-CNINFO_MAX_PAGES = 5
+CNINFO_MAX_PAGES = 20      # safety cap — normally stops early via adaptive cutoff
+CNINFO_MIN_DATE = "2024-01-01"  # fetch back to this date, then stop
 EASTMONEY_MAX_PAGES = 5
 
 CNINFO_ORG_ID_URL = "http://www.cninfo.com.cn/new/data/szse_stock.json"
@@ -91,6 +92,7 @@ def fetch_cninfo_announcements(stock_code: str, org_id: str) -> list[dict]:
     column = "szse" if clean_code.startswith(("00", "002", "003")) else "sse"
 
     all_items = []
+    min_ann_time = None
     for page in range(1, CNINFO_MAX_PAGES + 1):
         body = urllib.parse.urlencode({
             "pageNum": str(page), "pageSize": "30", "column": column,
@@ -107,6 +109,14 @@ def fetch_cninfo_announcements(stock_code: str, org_id: str) -> list[dict]:
             if not announcements:
                 break
             all_items.extend(announcements)
+            # Adaptive cutoff: stop if oldest item on this page is before CNINFO_MIN_DATE
+            oldest_time = announcements[-1].get("announcementTime", 0)
+            if oldest_time > 0 and CNINFO_MIN_DATE:
+                from datetime import datetime, timezone
+                min_dt = datetime.strptime(CNINFO_MIN_DATE, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+                oldest_dt = datetime.fromtimestamp(oldest_time / 1000, tz=timezone.utc)
+                if oldest_dt < min_dt:
+                    break
             total = data.get("totalRecordNum", 0)
             print(f"    Cninfo page {page}: {len(announcements)} items (total: {total})")
             if page * 30 >= total:
@@ -122,6 +132,7 @@ def classify_cninfo(items: list[dict]) -> dict:
     """Classify Cninfo announcements into annual/quarterly/pillar3 pools.
 
     Returns candidate pools only — no selection. AI chooses from these pools.
+    Cninfo is the PRIMARY source — entries are tagged source="cninfo" for priority routing.
     """
     pools = {"annual_report": [], "quarterly_report": [], "pillar3": []}
 
@@ -131,10 +142,22 @@ def classify_cninfo(items: list[dict]) -> dict:
         if not adj_url:
             continue
 
+        # Convert announcementTime (Unix millis) to ISO date string for unified sorting
+        ann_time = item.get("announcementTime", 0)
+        notice_date = ""
+        if ann_time and ann_time > 0:
+            from datetime import datetime, timezone
+            try:
+                notice_date = datetime.fromtimestamp(ann_time / 1000, tz=timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+            except (ValueError, OSError):
+                pass
+
         entry = {
             "title": title,
+            "source": "cninfo",
             "adjunctUrl": adj_url,
-            "announcementTime": item.get("announcementTime", 0),
+            "notice_date": notice_date,
+            "announcementTime": ann_time,
             "announcementId": item.get("announcementId", ""),
             "secCode": item.get("secCode", ""),
             "secName": item.get("secName", ""),
@@ -145,6 +168,7 @@ def classify_cninfo(items: list[dict]) -> dict:
             if not any(kw in title for kw in [
                 "摘要", "补充", "更正", "英文", "发行", "审核意见",
                 "资本充足", "第三支柱", "半年", "季度", "半年度",
+                "H股", "H股公告",  # H-share reports use HK GAAP/IFRS terminology — incompatible with A-share pipeline
             ]):
                 pools["annual_report"].append(entry)
 
@@ -152,8 +176,9 @@ def classify_cninfo(items: list[dict]) -> dict:
             "季度报告全文", "半年报告全文", "半年度报告全文",
             "第一季度报告", "第二季度报告", "第三季度报告",
             "半年报全文", "一季报全文", "三季报全文",
+            "一季度报告", "二季度报告", "三季度报告",  # short form: "2026年一季度报告"
         ]):
-            if "摘要" not in title:
+            if "摘要" not in title and "第三支柱" not in title:
                 pools["quarterly_report"].append(entry)
 
         if any(kw in title.lower() for kw in [
@@ -163,7 +188,7 @@ def classify_cninfo(items: list[dict]) -> dict:
             pools["pillar3"].append(entry)
 
     for cat in pools:
-        pools[cat].sort(key=lambda x: x.get("announcementTime", 0), reverse=True)
+        pools[cat].sort(key=lambda x: (x.get("notice_date", ""), x.get("announcementTime", 0)), reverse=True)
     return pools
 
 
@@ -178,13 +203,16 @@ PREFILTER_RULES = [
         "primary": ["年度报告全文", "年报全文"],
         "secondary": ["年度报告", "年报"],
         "negative": ["摘要", "补充", "更正", "英文版", "发行", "审核意见",
-                     "问询函", "回复", "监管函", "处罚"],
+                     "问询函", "回复", "监管函", "处罚",
+                     "H股", "H股公告", "港股"],  # H-share reports incompatible with A-share pipeline
     }),
     ("quarterly_report", {
         "primary": ["一季度报告全文", "半年度报告全文", "三季度报告全文",
                     "第一季报告全文", "半年报告全文", "第三季报告全文"],
-        "secondary": ["一季报", "半年报", "三季报", "季度报告全文", "季度报告"],
-        "negative": ["摘要", "补充", "更正"],
+        "secondary": ["一季报", "半年报", "三季报", "季度报告全文", "季度报告",
+                      "一季度报告", "二季度报告", "三季度报告"],  # short form
+        "negative": ["摘要", "补充", "更正",
+                     "H股", "H股公告", "港股"],  # H-share reports incompatible
     }),
     ("pillar3", {
         "primary": ["年度资本充足率报告", "资本充足率报告"],
@@ -259,6 +287,7 @@ def classify_eastmoney(items: list[dict]) -> dict:
             pools[cat].append({
                 "art_code": art_code,
                 "title": title[:120],
+                "source": "eastmoney",
                 "notice_date": notice_date,
                 "match_score": info["score"],
                 "match_reasons": info["match_reasons"],
@@ -354,12 +383,28 @@ def main():
             bank_data["eastmoney_raw"] = em_items
             em_pools = classify_eastmoney(em_items)
             # Merge Eastmoney candidates into pools (supplement, not replace)
+            # Cninfo is PRIMARY source per scheduler prompt §L0a. Eastmoney only fills gaps.
             for cat in ["annual_report", "quarterly_report", "pillar3"]:
                 existing_titles = {e["title"] for e in bank_data["pools"][cat]}
                 for entry in em_pools.get(cat, []):
                     if entry["title"] not in existing_titles:
                         bank_data["pools"][cat].append(entry)
                         existing_titles.add(entry["title"])
+                # Re-sort merged pool: Cninfo first, then newest date first within each source
+                bank_data["pools"][cat].sort(
+                    key=lambda x: (
+                        0 if x.get("source") == "cninfo" else 1,       # source priority
+                        x.get("notice_date", "0000-00-00"),             # date (empty → oldest)
+                    ),
+                    reverse=False  # cninfo before eastmoney; oldest before newest
+                )
+                # Two-pass: within same-source group, reverse date order (newest first)
+                # Group by source, reverse each group's date ordering
+                cninfo_entries = [e for e in bank_data["pools"][cat] if e.get("source") == "cninfo"]
+                em_entries = [e for e in bank_data["pools"][cat] if e.get("source") != "cninfo"]
+                cninfo_entries.sort(key=lambda x: x.get("notice_date", "0000-00-00"), reverse=True)
+                em_entries.sort(key=lambda x: (x.get("match_score", 0), x.get("notice_date", "")), reverse=True)
+                bank_data["pools"][cat] = cninfo_entries + em_entries
 
         candidates[code] = bank_data
 

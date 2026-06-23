@@ -59,19 +59,68 @@ For the assigned bank, for each leaf metric in the `leaf_inventory`:
 
 Every extracted numeric value MUST include a `period` field indicating the time window:
 
-| Period | Meaning | When to use |
-|--------|---------|-------------|
-| `FY2025` | Full year 2025 | Annual report data |
-| `FY2024` | Full year 2024 | Prior year annual report |
+| Period | Meaning | Source |
+|--------|---------|--------|
+| `FY2025` | Full year 2025 | 2025 annual report "本期" column |
+| `FY2024` | Full year 2024 | 2025 annual report "上期" column, OR 2024 annual report "本期" column (cross-validate both) |
+| `FY2023` | Full year 2023 | 2024 annual report "上期" column |
 | `Q1_2026` | First quarter 2026 | Q1 quarterly report |
 | `H1_2025` | First half 2025 | Semi-annual report |
 | `Q3_2025` | Third quarter 2025 | Q3 quarterly report |
 
-**Rule**: Derive period from the document type (e.g., annual report → FY2025, Q1 report → Q1_2026). If the same metric appears in multiple periods, extract each separately with its own period. If uncertain, mark confidence "low" and note the ambiguity.
+**Rule**: Derive period from the document and column. If the same metric appears in multiple periods, extract each separately with its own period. If uncertain, mark confidence "low" and note the ambiguity.
 
-**ROE period distinction**: ROE values from annual reports use FY period (全年口径). ROE values from quarterly reports, if annualized, should be marked with the quarterly period AND noted as annualized. The L1 analyst will compute ROE_fy and ROE_annualized separately.
+### Three-Year Data Extraction (MANDATORY when prev_annual_report is structured)
 
-**Scope boundary**: Only extract from Section A (Financial Statements) and Section B (Regulatory Indicators). Metrics in Sections D (Notes), E (Pillar 3), F (Governance) are out of scope for L0d — they will be extracted by L1 on-demand when curiosity is triggered.
+When structured.md Section G indicates prev_annual_report was structured, the file contains a complete three-year data view:
+- **A0 Three-Year Key Metrics Summary**: Has FY2023/FY2024/FY2025 columns for key financial metrics
+- **A1-A4**: 2025 annual report tables with FY2025/FY2024 columns  
+- **A1b-A4b**: 2024 annual report tables with FY2024/FY2023 columns
+- **Section B**: Regulatory indicators with FY2023/FY2024/FY2025 columns
+
+**Extraction source priority:**
+1. First, read the A0 Three-Year Summary table — it has all key metrics in one place
+2. For metrics NOT in A0, read A1b-A4b (2024 annual report) for FY2023 values
+3. Cross-validate FY2024 values between A1 (2025 report) and A1b (2024 report)
+
+**For these annual cross-section metrics, extract ALL THREE years (FY2023, FY2024, FY2025):**
+
+| Metric group | Individual metrics | Primary source |
+|-------------|-------------------|---------------|
+| Capital ratios | CET1 ratio, Tier 1 CAR, Total CAR | A0 + Section B |
+| Asset quality | NPL ratio, PCR, NPL balance, provision balance | A0 + Section B |
+| Profitability | ROE, NIM, net profit, total operating income, interest income, interest expense, fee income | A0 |
+| Balance sheet | Total assets, total loans, total deposits, total equity | A0 |
+| Efficiency | Cost-income ratio, loan-deposit ratio | A0 |
+| Per-share | EPS, BPS, DPS | A0 |
+
+Each year is a SEPARATE entry in `values` with its own period tag:
+```json
+"cet1_ratio_fy2025": {"value": 11.43, "period": "FY2025", "source": "A0"},
+"cet1_ratio_fy2024": {"value": 10.24, "period": "FY2024", "source": "A0"},
+"cet1_ratio_fy2023": {"value": 10.05, "period": "FY2023", "source": "A1b"}
+```
+
+**Before finishing**, verify: do I have CET1_ratio, NPL_ratio, ROE, total_assets, and net_profit for ALL three periods? If Section G says prev_annual_report was structured and any of these are NOT_FOUND, you missed data that is in the structured.md.
+
+### Multi-Period Extraction (MANDATORY)
+
+If the structured.md contains data from multiple periods (e.g., FY2025 annual + Q1_2026 quarterly + FY2024 annual), you MUST extract the following regulatory metrics for ALL available periods, not just the first occurrence:
+
+| Metric | Extract for periods |
+|--------|-------------------|
+| CET1 ratio | FY2025, Q1_2026 (and FY2024 if present) |
+| Tier 1 CAR | FY2025, Q1_2026 |
+| Total CAR | FY2025, Q1_2026 |
+| LCR | FY2025, Q1_2026 |
+| NSFR | FY2025, Q1_2026 |
+| NPL ratio | FY2025, Q1_2026 |
+| PCR (provision coverage) | FY2025, Q1_2026 |
+| Leverage ratio | FY2025, Q1_2026 |
+
+These metrics change quarter-to-quarter and the Q1_2026 values are the most recent available. Missing them means downstream VOH scoring uses stale data. Scan Section B for tables or text that reference "Q1" / "季度" / "2026年3月" / "2026Q1" to find these values.
+
+**Before finishing**, verify: do I have at least one metric with period=Q1_2026? If the structured.md Section G indicates a quarterly report was structured, the answer MUST be yes.
 
 ### Confidence Rules
 

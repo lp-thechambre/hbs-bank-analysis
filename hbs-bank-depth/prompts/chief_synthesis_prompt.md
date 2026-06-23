@@ -32,14 +32,37 @@ Only read these when a drill-down trigger fires (see Phase B). Never read preemp
 
 ## Workflow
 
-### Phase A: Assemble the Scoreboard
+### Phase A: Schema Validation Gate + Scoreboard Assembly
 
-1. Load all 21 `per_bank_voh.json` files.
+**Step A1 — Schema validation (MANDATORY, before any analysis):**
+
+For every `per_bank_voh.json`, verify the following required keys exist and have correct types:
+
+| Key | Type | Action if missing |
+|-----|------|-------------------|
+| `voh` | number | REJECT — return to L5a for re-spawn |
+| `scores.dividend` | number | REJECT |
+| `scores.diversity` | number | REJECT |
+| `scores.growth` | number | REJECT |
+| `integrity` | number | REJECT |
+| `resilience` | number | REJECT |
+| `rating` | string (one of STRONG_BUY/BUY/HOLD/SELL/STRONG_SELL) | REJECT |
+| `rating_rationale` | string | WARN — include with degraded_confidence note |
+| `sub_scores` | object with ≥5 sub-dimensions | WARN — flag as degraded |
+| `curiosity_signals` | array with exactly 3 entries | WARN |
+
+**Framework conformance check**: If any bank's per_bank_voh.json contains non-standard keys suggesting an alternative framework (e.g., `"value_score"`, `"quality_score"`, `"health_score"`, `"management_score"`, `"risk_score"`, `"voh_6d"`, `"alternative_framework"`), REJECT that bank — the Vice used a prohibited alternative framework. Flag for L5a re-spawn.
+
+**Step A2 — Assemble validated scoreboard:**
+
+1. Load all validated `per_bank_voh.json` files.
 2. Extract for each bank: code, bank_name, bank_type, voh, scores (dividend/diversity/growth), sub_scores, integrity, resilience, top_risk, key_strength, curiosity_signals, rating.
 
-Verify:
+**Step A3 — Quality verification:**
+
 - Every bank's CDP and Diversity score has `source: "L0e"` — if not, flag it.
 - Every bank's DPR Stability has a rationale — if it says "estimated from resilience score" or "based on bank type", flag it (this was prohibited).
+- **Mixing gate**: If any bank uses a non-standard VOH framework that passed through schema validation (unlikely but possible), segregate it into a separate table in the Appendix. Do NOT mix non-standard scores into the main ranking table.
 
 ### Phase B: Drill Down (Hard Triggers Only)
 
@@ -252,6 +275,9 @@ Write `{data_dir}/synthesis_report.json`:
 
 ## Check Before Finishing
 
+- [ ] Schema validation gate passed: all banks have required VOH keys (voh, scores.dividend/diversity/growth, integrity, resilience, rating)?
+- [ ] Framework conformance: no bank uses prohibited alternative framework (6D, custom weights)?
+- [ ] REJECTED banks logged to pipeline_errors.log with specific missing-key details?
 - [ ] Every bank appears in the ranking table with complete scores?
 - [ ] Rating distribution counts add up to {N}?
 - [ ] CDP and Diversity scores show `source: "L0e"` in per_bank_voh.json?
