@@ -45,6 +45,30 @@ Layer 1 (42→10-15)   Layer 2 (full audit)  Layer 3 (weights + cross-eval)
 - Optional: `pip install akshare` (for automatic market data fetching)
 - No API key, database, or GPU required
 
+### Risk Metrics and Market Data (Critical Dependency)
+
+The portfolio pipeline computes the following risk metrics in Layer 0 (`fetch_market_data.py`):
+
+| Metric | Purpose | Degradation if unavailable |
+|--------|---------|---------------------------|
+| Beta (vs CSI Bank Index) | Low/High beta tactical variants | Tactical variants degrade to equal-weight fallback |
+| Annualized volatility | Risk-adjusted position sizing | No vol-based capping |
+| Correlation matrix | Hidden common-risk factor detection | L3 stress test relies on qualitative narrative only |
+| Market cap weights | Baseline for strategic weight formula | All banks get equal weight, σ_mcap → 0 |
+| σ_mcap (market cap dispersion) | Rank-diff step size in weight formula | Formula degenerates: strategic = equal weight |
+
+**These metrics require 2+ years of daily price data.** The default data source is `akshare`, which pulls from public Chinese financial data APIs. However:
+
+- **akshare availability is not guaranteed.** The underlying APIs (东方财富, 新浪财经) may rate-limit, change endpoints, or block automated requests. In our testing, akshare failed to return price data for all 13 banks, causing the entire risk metrics layer to degrade.
+- **If you need reliable risk metrics**, you must configure your own data source. Options include:
+  - **Wind / Bloomberg terminal** — commercial, full coverage
+  - **Tushare Pro** (tushare.pro) — requires registration and API token, good Chinese market coverage
+  - **Quandl / Yahoo Finance** — limited Chinese A-share data but may suffice for large-cap banks
+  - **Self-hosted database** — populate from your existing data pipeline
+- **Without market data, the pipeline still runs**, but strategic weights degenerate to equal allocation and tactical variants are limited to dividend-oriented and equal-weight only. The AI cross-evaluation and scenario stress tests still function using qualitative data from the Depth layer.
+
+To integrate a custom data source, modify `scripts/fetch_market_data.py` or provide a pre-computed `portfolio_input.json` with the required fields (see `assets/output_schema.json` for the full schema).
+
 ## Usage
 
 ### Mode A — Consume Depth Output
