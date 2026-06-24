@@ -149,13 +149,20 @@ def classify_banks(passed_banks, profit_records=None):
 
 def _classify_single(code, profit_rec):
     """Classify a single bank by interest income ratio."""
-    if profit_rec is None:
-        # Fallback to hard-coded override, then default
-        override = TYPE_OVERRIDES.get(code, "traditional_commercial")
+    # TYPE_OVERRIDES take precedence — they encode expert domain knowledge
+    override = TYPE_OVERRIDES.get(code)
+    if override:
         return {
             "type": override,
+            "confidence": "high",
+            "rationale": "Using pre-defined type override (expert classification)",
+        }
+
+    if profit_rec is None:
+        return {
+            "type": "traditional_commercial",
             "confidence": "low",
-            "rationale": "Profit data unavailable; using type override or default",
+            "rationale": "Profit data unavailable; defaulting to traditional_commercial",
         }
 
     net_int = profit_rec.get("NET_INTEREST_INCOME")
@@ -187,12 +194,11 @@ def _classify_single(code, profit_rec):
             return {"type": "trading_ib", "confidence": "medium",
                     "rationale": f"High fee ratio {fee_ratio:.1%} suggests trading/IB"}
 
-    # Last resort
-    override = TYPE_OVERRIDES.get(code, "traditional_commercial")
+    # Last resort — all algorithmic methods failed
     return {
-        "type": override,
+        "type": "traditional_commercial",
         "confidence": "low",
-        "rationale": "All classification methods failed; using override/default",
+        "rationale": "All classification methods failed; defaulting to traditional_commercial",
     }
 
 
@@ -569,14 +575,13 @@ def _compute_flags(bank, stats, prices_dict, dividend_data, code):
         flags.append({"id": "F4", "level": "WATCH",
                       "description": f"NIM critically low: {nim_current:.2f}%"})
 
-    # F5: High ROE, low RORWA (leverage-inflated)
+    # F5: High ROE, low RORWA (leverage-inflated). Annualize Q1 data.
     if roe is not None and stats.get("ROEJQ"):
         roe_p75 = stats["ROEJQ"]["p75"]
-        # RORWA proxy via net profit / total_assets
         net_profit = bank.get("PARENTNETPROFIT")
         total_assets = bank.get("TOTAL_ASSETS_PK")
         if net_profit and total_assets and total_assets > 0:
-            roa = net_profit / total_assets
+            roa = (net_profit * 4) / total_assets  # annualize Q1 net profit
             roa_p25 = 0.003  # ~0.3% ROA, rough lower quartile for Chinese banks
             if roe > roe_p75 and roa < roa_p25:
                 flags.append({"id": "F5", "level": "WATCH",
@@ -596,10 +601,10 @@ def _compute_flags(bank, stats, prices_dict, dividend_data, code):
         flags.append({"id": "F8", "level": "INFO",
                       "description": f"Cost-income ratio elevated: {cost_income:.1f}%"})
 
-    # F9: Negative growth (proxy: low ROE)
-    if roe is not None and roe < 5:
+    # F9: Low profitability (annualize Q1 ROE: ×4)
+    if roe is not None and roe * 4 < 5:
         flags.append({"id": "F9", "level": "INFO",
-                      "description": f"Profitability concern: ROE {roe:.2f}% < 5%"})
+                      "description": f"Profitability concern: annualized ROE {roe*4:.1f}% < 5%"})
 
     # F10: Thin capital buffer
     if car is not None and car < 12:

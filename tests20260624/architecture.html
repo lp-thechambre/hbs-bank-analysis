@@ -1,0 +1,627 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>HBS-Screen Pipeline Architecture</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: #0d1117;
+    color: #c9d1d9;
+    padding: 24px;
+  }
+  h1 { text-align: center; font-size: 22px; margin-bottom: 4px; color: #f0f6fc; }
+  .subtitle { text-align: center; color: #8b949e; font-size: 13px; margin-bottom: 28px; }
+
+  .pipeline {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    max-width: 1300px;
+    margin: 0 auto;
+  }
+
+  .layer {
+    border: 1px solid #21262d;
+    border-radius: 8px;
+    margin-bottom: 12px;
+    overflow: hidden;
+    background: #161b22;
+  }
+  .layer-header {
+    padding: 10px 16px;
+    font-weight: 600;
+    font-size: 13px;
+    display: flex; align-items: center; gap: 10px;
+  }
+  .layer-header .badge {
+    font-size: 10px; padding: 2px 8px; border-radius: 10px; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.5px;
+  }
+  .badge-script { background: #1f6feb33; color: #58a6ff; border: 1px solid #1f6feb66; }
+  .badge-ai     { background: #7c3aed33; color: #a78bfa; border: 1px solid #7c3aed66; }
+  .badge-mixed  { background: #d2992233; color: #d29922; border: 1px solid #d2992266; }
+  .badge-output { background: #23863633; color: #3fb950; border: 1px solid #23863666; }
+
+  .layer-body { padding: 12px 16px 16px; }
+
+  .nodes {
+    display: flex; gap: 12px; flex-wrap: wrap; align-items: stretch;
+  }
+
+  .node {
+    flex: 1; min-width: 180px; max-width: 300px;
+    border: 1px solid #30363d; border-radius: 6px;
+    padding: 12px; font-size: 12px;
+    display: flex; flex-direction: column; gap: 6px;
+  }
+  .node-script { border-left: 3px solid #1f6feb; background: #161b22; }
+  .node-ai     { border-left: 3px solid #7c3aed; background: #161b22; }
+  .node-file   { border-left: 3px solid #238636; background: #0d1117; border-style: dashed; }
+  .node-name   { font-weight: 600; font-size: 13px; color: #f0f6fc; }
+  .node-desc   { color: #8b949e; font-size: 11px; line-height: 1.5; }
+  .node-io     { font-size: 10px; color: #6e7681; margin-top: auto; }
+  .node-io span { display: inline-block; background: #21262d; padding: 1px 6px; border-radius: 3px; margin: 1px 2px; }
+
+  .arrow-row {
+    display: flex; align-items: center; justify-content: center;
+    padding: 2px 0; color: #484f58; font-size: 16px;
+  }
+  .arrow-row svg { width: 24px; height: 24px; }
+
+  .parallel-group {
+    display: flex; gap: 12px; flex: 1;
+  }
+  .parallel-label {
+    writing-mode: vertical-lr; text-orientation: mixed;
+    font-size: 9px; color: #484f58; text-align: center;
+    letter-spacing: 2px; padding: 0 4px;
+  }
+
+  .data-flow {
+    margin-top: 10px; padding: 8px 12px;
+    background: #0d1117; border-radius: 4px;
+    border: 1px dashed #21262d;
+    font-size: 11px; color: #8b949e;
+    display: flex; gap: 16px; flex-wrap: wrap; align-items: center;
+  }
+  .data-flow strong { color: #c9d1d9; margin-right: 4px; }
+
+  .legend {
+    display: flex; gap: 20px; justify-content: center; margin-bottom: 24px;
+    font-size: 11px; color: #8b949e;
+  }
+  .legend-item { display: flex; align-items: center; gap: 6px; }
+  .legend-dot { width: 10px; height: 10px; border-radius: 2px; }
+  .legend-dot.script { background: #1f6feb; }
+  .legend-dot.ai     { background: #7c3aed; }
+  .legend-dot.file   { background: #238636; }
+
+  .warn-box {
+    margin-top: 10px; padding: 8px 12px;
+    background: #d2992211; border: 1px solid #d2992233; border-radius: 4px;
+    font-size: 11px; color: #d29922;
+  }
+  .warn-box strong { color: #e3b341; }
+
+  hr.divider { border: none; border-top: 1px solid #21262d; margin: 12px 0; }
+</style>
+</head>
+<body>
+
+<h1>HBS-Screen Pipeline Architecture</h1>
+<p class="subtitle">42 A-share listed banks → 10–15 screened candidates &nbsp;|&nbsp; <span style="color:#58a6ff">■ Python script</span> &nbsp; <span style="color:#a78bfa">■ AI spawn</span> &nbsp; <span style="color:#3fb950">■ Disk artifact</span></p>
+
+<div class="pipeline">
+
+<!-- ============================================================ -->
+<!-- LAYER 0 -->
+<!-- ============================================================ -->
+<div class="layer">
+  <div class="layer-header" style="background:#1f6feb11;">
+    <span class="badge badge-script">Python</span>
+    Layer 0 — Data Engineering
+    <span style="color:#8b949e;font-weight:400;font-size:11px;margin-left:auto;">全脚本，无 AI 参与</span>
+  </div>
+  <div class="layer-body">
+    <div class="nodes">
+
+      <!-- fetch_financials -->
+      <div class="node node-script">
+        <div class="node-name">fetch_financials.py</div>
+        <div class="node-desc">从东方财富 F10 API 拉取 42 家银行的主要财务指标、利润表、股息数据</div>
+        <div class="node-io">
+          产出 <span>raw_main.json</span> <span>raw_profit.json</span> <span>raw_dividends.json</span>
+        </div>
+      </div>
+
+      <!-- pb_fetcher -->
+      <div class="node node-script">
+        <div class="node-name">pb_fetcher.py</div>
+        <div class="node-desc">从腾讯财经 qt.gtimg.cn 批量拉取股价，用于 PB / EPS yield 计算</div>
+        <div class="node-io">
+          产出 <span>raw_prices.json</span>
+        </div>
+      </div>
+
+      <!-- env_scan -->
+      <div class="node node-script" style="max-width:160px;">
+        <div class="node-name">env_scan.py</div>
+        <div class="node-desc">运行前环境检查：Python 版本、依赖包可用性</div>
+        <div class="node-io">产出 <span>env_scan.json</span></div>
+      </div>
+
+    </div>
+
+    <div class="arrow-row">↓</div>
+
+    <div class="nodes">
+
+      <!-- generate_bank_cards -->
+      <div class="node node-script" style="max-width:340px;">
+        <div class="node-name">generate_bank_cards.py</div>
+        <div class="node-desc">
+          读入 raw JSON → 银行分类 (利息收入占比) → 同行统计 → <b>五维度评分</b> → 生成卡片和 index.csv。
+          <br><br>
+          <b>评分方式</b>: D1/D3/D4 同行百分位 + <b style="color:#d29922;">D2 绝对线性</b> (pcr/3.0, loan_prov*20) + D5 piecewise 阈值
+        </div>
+        <div class="node-io">
+          产出 <span>index.csv</span> <span>cards/*.md ×42</span> <span>generation_metadata.json</span>
+        </div>
+      </div>
+
+      <!-- generate_embeddings -->
+      <div class="node node-script" style="max-width:260px;">
+        <div class="node-name">generate_embeddings.py</div>
+        <div class="node-desc">
+          调用 OpenAI 兼容 embedding API 对 42 份卡片生成向量 → 纯 Python KMeans 聚类 → 轮廓系数评估。
+          <br>API 不可用时降级为模拟 embedding。
+        </div>
+        <div class="node-io">产出 <span>cluster_report.json</span></div>
+      </div>
+
+    </div>
+
+    <div class="data-flow">
+      <strong>Layer 0 磁盘产出:</strong>
+      index.csv (42行) &nbsp;|&nbsp; cards/*.md (42份, ~1000-1500 tokens/份) &nbsp;|&nbsp; cluster_report.json &nbsp;|&nbsp; generation_metadata.json &nbsp;|&nbsp; env_scan.json
+    </div>
+
+  </div>
+</div>
+
+<!-- arrow -->
+<div style="text-align:center;color:#484f58;font-size:20px;padding:4px 0;">⬇</div>
+
+<!-- ============================================================ -->
+<!-- LAYER 1 -->
+<!-- ============================================================ -->
+<div class="layer">
+  <div class="layer-header" style="background:#7c3aed11;">
+    <span class="badge badge-ai">AI spawn ×2</span>
+    Layer 1 — Quantitative + Edge Signal Detection
+    <span style="color:#8b949e;font-weight:400;font-size:11px;margin-left:auto;">并行运行，互不可见</span>
+  </div>
+  <div class="layer-body">
+    <div class="nodes">
+
+      <!-- quant spawn -->
+      <div class="node node-ai" style="flex:2;">
+        <div class="node-name">quant_spawn (AI)</div>
+        <div class="node-desc">
+          <b>角色</b>: 量化分析师。读取 index.csv + cards/*.md，按阈值规则 (CET1&lt;8.5%→REJECT, NPL&gt;3%→REJECT, ROE&lt;5%→WATCH...) 对 42 家银行做定量初判。
+          <br><b>prompt</b>: quant_spawn_prompt.md (~94行)
+          <br><b>防幻觉</b>: "Never make up data. Every value must come from index.csv or a card."
+          <br><b>限制</b>: 只能读 15-20 张卡片，不引用 flag ID (F1-F11)，不接触 edge 结果。
+        </div>
+        <div class="node-io">
+          产出 <span>quant_markers.json</span> &nbsp; 输入 <span>index.csv</span> <span>cards/*.md</span>
+        </div>
+      </div>
+
+      <!-- edge spawn -->
+      <div class="node node-ai" style="flex:2;">
+        <div class="node-name">edge_spawn (AI)</div>
+        <div class="node-desc">
+          <b>角色</b>: 异常检测器。读取 cards/*.md，找五类异常信号：metric_extreme, metric_mismatch, group_outlier, trend_break, external_signal。
+          <br><b>prompt</b>: edge_spawn_prompt.md
+          <br><b>防幻觉</b>: "Normal data missing (NA) is NOT an anomaly." external_signal 必须引用搜索结果和日期，不得用"未经证实的传闻"。
+          <br><b>限制</b>: 最多 3 次 web_search，不接触 quant 结果。
+        </div>
+        <div class="node-io">
+          产出 <span>edge_markers.json</span> &nbsp; 输入 <span>cards/*.md</span>
+        </div>
+      </div>
+
+    </div>
+
+    <div class="data-flow">
+      <strong>Layer 1 磁盘产出:</strong>
+      quant_markers.json (42 家银行的 PASS/WATCH/REJECT + curiosity 字符串) &nbsp;|&nbsp;
+      edge_markers.json (异常银行标记 + 严重度)
+    </div>
+
+  </div>
+</div>
+
+<!-- arrow -->
+<div style="text-align:center;color:#484f58;font-size:20px;padding:4px 0;">⬇</div>
+
+<!-- ============================================================ -->
+<!-- COMPUTE PIPELINE STATS (sidecar) -->
+<!-- ============================================================ -->
+<div class="layer" style="border-style:dashed;">
+  <div class="layer-header" style="background:#d2992211;">
+    <span class="badge badge-script">Python</span>
+    Sidecar — Pipeline Statistics (确定性统计，不参与 AI 推理)
+  </div>
+  <div class="layer-body">
+    <div class="nodes">
+      <div class="node node-script" style="max-width:400px;">
+        <div class="node-name">compute_pipeline_stats.py</div>
+        <div class="node-desc">
+          读取上游 quant_markers + edge_markers + index.csv，做<b>确定性计数和交叉验证</b>：
+          统计各层通过/拒绝数、银行类型分布、排名声明真实性标注。
+          <br><b>这是 synthesis 层的防幻觉锚点</b>——所有聚合统计必须来自此文件，AI 禁止自行数数。
+        </div>
+        <div class="node-io">产出 <span>pipeline_stats.json</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- arrow -->
+<div style="text-align:center;color:#484f58;font-size:20px;padding:4px 0;">⬇</div>
+
+<!-- ============================================================ -->
+<!-- LAYER 2 -->
+<!-- ============================================================ -->
+<div class="layer">
+  <div class="layer-header" style="background:#7c3aed11;">
+    <span class="badge badge-ai">AI spawn ×3~4</span>
+    Layer 2 — Qualitative Deep Read (by Bank Type Group)
+    <span style="color:#8b949e;font-weight:400;font-size:11px;margin-left:auto;">并行运行，每组 ≤10 家银行</span>
+  </div>
+  <div class="layer-body">
+
+    <div class="nodes">
+      <div class="node node-ai">
+        <div class="node-name">qual_spawn — Group A (AI)</div>
+        <div class="node-desc">
+          <b>国有大行</b> (6家): 工商/建设/农业/中国/交通/邮储
+          <br>焦点: NIM 压缩、股息可持续性、TLAC 达标
+        </div>
+        <div class="node-io">产出 <span>qual_markers_group_a.json</span></div>
+      </div>
+      <div class="node node-ai">
+        <div class="node-name">qual_spawn — Group B (AI)</div>
+        <div class="node-desc">
+          <b>股份制</b> (9家): 招商/兴业/浦发/中信/民生/光大/平安/华夏/浙商
+          <br>焦点: 零售转型、财富管理收入占比、房地产敞口
+        </div>
+        <div class="node-io">产出 <span>qual_markers_group_b.json</span></div>
+      </div>
+      <div class="node node-ai">
+        <div class="node-name">qual_spawn — Group C (AI)</div>
+        <div class="node-desc">
+          <b>城商行 Tier 1</b> (≥1万亿总资产): 江苏/北京/上海/南京/宁波...
+          <br>焦点: 区域集中度、对公贷款质量
+        </div>
+        <div class="node-io">产出 <span>qual_markers_group_c.json</span></div>
+      </div>
+      <div class="node node-ai">
+        <div class="node-name">qual_spawn — Group D (AI)</div>
+        <div class="node-desc">
+          <b>城商行 Tier 2 + 农商行</b> (&lt;1万亿)
+          <br>焦点: 拨备充足性、规模瓶颈、并购风险
+        </div>
+        <div class="node-io">产出 <span>qual_markers_group_d.json</span></div>
+      </div>
+    </div>
+
+    <div class="data-flow">
+      <strong>输入</strong>: cards/*.md + quant_markers.json + edge_markers.json (必须回应上游 flag)
+      &nbsp;|&nbsp; <strong>Prompt</strong>: qual_spawn_prompt.md
+      &nbsp;|&nbsp; <strong>防幻觉</strong>: "Do NOT contradict upstream markers without card-level evidence. Rank claims MUST be scoped to your group only — NEVER '#1 in universe'."
+      &nbsp;|&nbsp; <strong>输出</strong>: PASS / WATCH / REJECT + upstream_flags_responded_to
+    </div>
+
+    <div class="warn-box">
+      <strong>已知问题</strong>: qual_spawn_prompt 要求 upstream_flags_responded_to 引用 flag ID (如 "quant:F4")，
+      但 quant_spawn 输出格式只含 curiosity 字符串，没有 flag ID。flag ID (F1-F11) 定义在 scoring_rules.md 中，
+      quant prompt 从未引用它们，导致跨层追溯链断裂。
+    </div>
+
+  </div>
+</div>
+
+<!-- arrow -->
+<div style="text-align:center;color:#484f58;font-size:20px;padding:4px 0;">⬇</div>
+
+<!-- ============================================================ -->
+<!-- LAYER 3 -->
+<!-- ============================================================ -->
+<div class="layer">
+  <div class="layer-header" style="background:#7c3aed11;">
+    <span class="badge badge-ai">AI spawn ×1</span>
+    Layer 3 — Synthesis (Final Judge)
+  </div>
+  <div class="layer-body">
+    <div class="nodes">
+      <div class="node node-ai" style="max-width:100%;flex:1;">
+        <div class="node-name">synthesis_spawn (AI) — "Final Judge"</div>
+        <div class="node-desc">
+          <b>角色</b>: 读取所有上游 markers + pipeline_stats.json，将银行分为四类处理：
+          <br>&nbsp;&nbsp;A) 一致通过 → HIGH_CONFIDENCE_PASS → 直接入选
+          <br>&nbsp;&nbsp;B) 一致拒绝 → UNANIMOUS_REJECT → 直接淘汰
+          <br>&nbsp;&nbsp;C) 分数边缘 → 读卡核实
+          <br>&nbsp;&nbsp;D) 层间冲突 → 读卡仲裁
+          <br>
+          <br><b>硬约束</b>:
+          &nbsp;&nbsp;• 所有聚合计数必须来自 pipeline_stats.json，严禁 AI 自行数数
+          &nbsp;&nbsp;• 卡片读取预算 ≤ 5 张
+          &nbsp;&nbsp;• GREEN 银行必须验证 CET1 ≥ 9.5%
+          &nbsp;&nbsp;• 每家银行必须有且仅有一个 tier 和一个 selection_path
+          &nbsp;&nbsp;• 拒绝银行必须有结构化条目 (rule/metric/value/threshold)
+          <br><b>Prompt</b>: synthesis_spawn_prompt.md (~390行，防幻觉最强)
+        </div>
+        <div class="node-io">
+          产出 <span>final_output.json</span> <span>screening_report.md</span>
+          输入 <span>quant_markers.json</span> <span>edge_markers.json</span> <span>qual_markers_*.json</span> <span>pipeline_stats.json</span> <span>index.csv</span> <span>cluster_report.json</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="data-flow">
+      <strong>最终产出</strong>: final_output.json (10-15 candidates + rejected + analyst_notes) &nbsp;|&nbsp; screening_report.md (可读 Markdown)
+    </div>
+  </div>
+</div>
+
+</div>
+
+<!-- ============================================================ -->
+<!-- ALTERNATIVE PATH -->
+<!-- ============================================================ -->
+<hr class="divider" style="margin: 32px 0 16px;">
+
+<h2 style="text-align:center;font-size:16px;color:#f0f6fc;margin-bottom:12px;">compute_scores.py — 独立评分管线 (非 AI)</h2>
+<p style="text-align:center;color:#8b949e;font-size:12px;margin-bottom:16px;">
+  这条管线完全不经过 AI，直接对原始数据进行确定性评分。与 AI spawn 管线 <b style="color:#d29922;">没有数据流对接</b>。
+</p>
+
+<div class="pipeline">
+<div class="layer">
+  <div class="layer-header" style="background:#1f6feb11;">
+    <span class="badge badge-script">Python</span>
+    compute_scores.py — 五阶段评分引擎
+  </div>
+  <div class="layer-body">
+    <div class="nodes">
+
+      <div class="node node-script">
+        <div class="node-name">phase1</div>
+        <div class="node-desc">
+          <b>粗筛</b>: R1(CET1&lt;8.5%) → R2(NPL&gt;3%) → R3(PCR&lt;120%) → R4(净利润为负) → R5(关键字段缺失&gt;3)
+          <br>最先命中的拒绝规则生效 (continue 跳过后续)
+        </div>
+        <div class="node-io">产出 <span>phase1_results.json</span> (42→~28)</div>
+      </div>
+
+      <div class="node node-script">
+        <div class="node-name">phase2</div>
+        <div class="node-desc">
+          <b>五维度评分</b>: D1-D5 全部同行百分位 (含 D2)。
+          <br>D3 RORWA 用硬编码阈值估计 (0.5%/0.8%/1.0%/1.5%/2.0%)。
+          <br>D4 用总资产排名作为增长的代理变量。
+        </div>
+        <div class="node-io">产出 <span>phase2_results.json</span> (含 composite score)</div>
+      </div>
+
+      <div class="node node-script">
+        <div class="node-name">triggers</div>
+        <div class="node-desc">
+          <b>Phase 3 触发</b>: A) 边缘分数 (±5% cutoff) B) ≥2 WATCH flag
+          C) 高盈利+差资产质量冲突 D) REJECT flag 需确认
+          <br>强制 5-10 家触发。
+        </div>
+        <div class="node-io">产出 <span>phase3_triggers.json</span></div>
+      </div>
+
+      <div class="node node-script">
+        <div class="node-name">finalize</div>
+        <div class="node-desc">
+          <b>编译最终输出</b>: 按 composite score 排序 → 取 top 15 → 生成最终 JSON。
+          <br>注意: phase1 的 rejected 列表 <b style="color:#d29922;">没有在 finalize 中使用</b>。
+        </div>
+        <div class="node-io">产出 <span>final_output.json</span></div>
+      </div>
+
+    </div>
+
+    <div class="data-flow">
+      <strong>输入</strong>: raw_main.json + raw_profit.json + raw_dividends.json + raw_prices.json (与 L0 相同)
+      &nbsp;|&nbsp; <strong>运行方式</strong>: <code>python3 compute_scores.py --mode phase1 ... && --mode phase2 ... && --mode triggers ... && --mode finalize ...</code>
+    </div>
+
+    <div class="warn-box">
+      <strong>与 AI 管线的评分差异 (D2 最关键)</strong>:
+      <br>compute_scores D2: 全部同行百分位 (_linear_score)
+      <br>generate_bank_cards D2: pcr/3.0 + loan_prov*20 (绝对线性)
+      <br>→ 同一家银行，两边的 D2 分数可能差 2-3 倍。卡片上的 D2 分数 ≠ 最终排名的 D2 分数。
+    </div>
+
+  </div>
+</div>
+</div>
+
+<!-- ============================================================ -->
+<!-- SUMMARY TABLE -->
+<!-- ============================================================ -->
+<hr class="divider" style="margin: 32px 0 16px;">
+
+<h2 style="text-align:center;font-size:16px;color:#f0f6fc;margin-bottom:12px;">数据流汇总</h2>
+
+<div style="max-width:1300px;margin:0 auto;overflow-x:auto;">
+<table style="width:100%;border-collapse:collapse;font-size:12px;color:#c9d1d9;">
+<thead>
+<tr style="background:#21262d;">
+  <th style="padding:8px 12px;text-align:left;border:1px solid #30363d;">Layer</th>
+  <th style="padding:8px 12px;text-align:left;border:1px solid #30363d;">节点</th>
+  <th style="padding:8px 12px;text-align:center;border:1px solid #30363d;">类型</th>
+  <th style="padding:8px 12px;text-align:left;border:1px solid #30363d;">读取</th>
+  <th style="padding:8px 12px;text-align:left;border:1px solid #30363d;">写入</th>
+  <th style="padding:8px 12px;text-align:left;border:1px solid #30363d;">评分方式</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td style="padding:8px 12px;border:1px solid #30363d;" rowspan="5">L0</td>
+  <td style="padding:8px 12px;border:1px solid #30363d;">fetch_financials.py</td>
+  <td style="padding:8px 12px;border:1px solid #30363d;text-align:center;"><span class="badge badge-script">script</span></td>
+  <td style="padding:8px 12px;border:1px solid #30363d;">Eastmoney API</td>
+  <td style="padding:8px 12px;border:1px solid #30363d;">raw_*.json</td>
+  <td style="padding:8px 12px;border:1px solid #30363d;">—</td>
+</tr>
+<tr>
+  <td style="padding:8px 12px;border:1px solid #30363d;">pb_fetcher.py</td>
+  <td style="padding:8px 12px;border:1px solid #30363d;text-align:center;"><span class="badge badge-script">script</span></td>
+  <td style="padding:8px 12px;border:1px solid #30363d;">Tencent qt.gtimg.cn</td>
+  <td style="padding:8px 12px;border:1px solid #30363d;">raw_prices.json</td>
+  <td style="padding:8px 12px;border:1px solid #30363d;">—</td>
+</tr>
+<tr>
+  <td style="padding:8px 12px;border:1px solid #30363d;">generate_bank_cards.py</td>
+  <td style="padding:8px 12px;border:1px solid #30363d;text-align:center;"><span class="badge badge-script">script</span></td>
+  <td style="padding:8px 12px;border:1px solid #30363d;">raw_*.json</td>
+  <td style="padding:8px 12px;border:1px solid #30363d;">index.csv, cards/*.md</td>
+  <td style="padding:8px 12px;border:1px solid #30363d;color:#d29922;">D2=绝对值, D1/D3/D4=百分位</td>
+</tr>
+<tr>
+  <td style="padding:8px 12px;border:1px solid #30363d;">generate_embeddings.py</td>
+  <td style="padding:8px 12px;border:1px solid #30363d;text-align:center;"><span class="badge badge-script">script</span></td>
+  <td style="padding:8px 12px;border:1px solid #30363d;">cards/*.md</td>
+  <td style="padding:8px 12px;border:1px solid #30363d;">cluster_report.json</td>
+  <td style="padding:8px 12px;border:1px solid #30363d;">—</td>
+</tr>
+<tr>
+  <td style="padding:8px 12px;border:1px solid #30363d;">env_scan.py</td>
+  <td style="padding:8px 12px;border:1px solid #30363d;text-align:center;"><span class="badge badge-script">script</span></td>
+  <td style="padding:8px 12px;border:1px solid #30363d;">sys, requests</td>
+  <td style="padding:8px 12px;border:1px solid #30363d;">env_scan.json</td>
+  <td style="padding:8px 12px;border:1px solid #30363d;">—</td>
+</tr>
+
+<tr style="background:#161b22;">
+  <td style="padding:8px 12px;border:1px solid #30363d;" rowspan="2">L1</td>
+  <td style="padding:8px 12px;border:1px solid #30363d;">quant_spawn</td>
+  <td style="padding:8px 12px;border:1px solid #30363d;text-align:center;"><span class="badge badge-ai">AI</span></td>
+  <td style="padding:8px 12px;border:1px solid #30363d;">index.csv, cards/*.md</td>
+  <td style="padding:8px 12px;border:1px solid #30363d;">quant_markers.json</td>
+  <td style="padding:8px 12px;border:1px solid #30363d;">AI 阈值规则判断</td>
+</tr>
+<tr style="background:#161b22;">
+  <td style="padding:8px 12px;border:1px solid #30363d;">edge_spawn</td>
+  <td style="padding:8px 12px;border:1px solid #30363d;text-align:center;"><span class="badge badge-ai">AI</span></td>
+  <td style="padding:8px 12px;border:1px solid #30363d;">cards/*.md</td>
+  <td style="padding:8px 12px;border:1px solid #30363d;">edge_markers.json</td>
+  <td style="padding:8px 12px;border:1px solid #30363d;">AI 异常模式检测</td>
+</tr>
+
+<tr>
+  <td style="padding:8px 12px;border:1px solid #30363d;">Sidecar</td>
+  <td style="padding:8px 12px;border:1px solid #30363d;">compute_pipeline_stats.py</td>
+  <td style="padding:8px 12px;border:1px solid #30363d;text-align:center;"><span class="badge badge-script">script</span></td>
+  <td style="padding:8px 12px;border:1px solid #30363d;">quant + edge markers, index.csv</td>
+  <td style="padding:8px 12px;border:1px solid #30363d;">pipeline_stats.json</td>
+  <td style="padding:8px 12px;border:1px solid #30363d;">确定性计数 (防幻觉)</td>
+</tr>
+
+<tr style="background:#161b22;">
+  <td style="padding:8px 12px;border:1px solid #30363d;">L2</td>
+  <td style="padding:8px 12px;border:1px solid #30363d;">qual_spawn ×3~4</td>
+  <td style="padding:8px 12px;border:1px solid #30363d;text-align:center;"><span class="badge badge-ai">AI</span></td>
+  <td style="padding:8px 12px;border:1px solid #30363d;">cards + L1 markers + L0 markers</td>
+  <td style="padding:8px 12px;border:1px solid #30363d;">qual_markers_*.json</td>
+  <td style="padding:8px 12px;border:1px solid #30363d;">AI 同行对比 + 回应上游 flag</td>
+</tr>
+
+<tr style="background:#161b22;">
+  <td style="padding:8px 12px;border:1px solid #30363d;">L3</td>
+  <td style="padding:8px 12px;border:1px solid #30363d;">synthesis_spawn</td>
+  <td style="padding:8px 12px;border:1px solid #30363d;text-align:center;"><span class="badge badge-ai">AI</span></td>
+  <td style="padding:8px 12px;border:1px solid #30363d;">所有 L1+L2 markers + pipeline_stats</td>
+  <td style="padding:8px 12px;border:1px solid #30363d;">final_output.json + screening_report.md</td>
+  <td style="padding:8px 12px;border:1px solid #30363d;">AI 冲突仲裁 (不重算分)</td>
+</tr>
+
+<tr style="background:#0d1117;">
+  <td style="padding:8px 12px;border:1px solid #30363d;" rowspan="4">独立</td>
+  <td style="padding:8px 12px;border:1px solid #30363d;">compute_scores.py phase1</td>
+  <td style="padding:8px 12px;border:1px solid #30363d;text-align:center;"><span class="badge badge-script">script</span></td>
+  <td style="padding:8px 12px;border:1px solid #30363d;">raw_main.json</td>
+  <td style="padding:8px 12px;border:1px solid #30363d;">phase1_results.json</td>
+  <td style="padding:8px 12px;border:1px solid #30363d;">R1-R5 硬阈值粗筛</td>
+</tr>
+<tr style="background:#0d1117;">
+  <td style="padding:8px 12px;border:1px solid #30363d;">compute_scores.py phase2</td>
+  <td style="padding:8px 12px;border:1px solid #30363d;text-align:center;"><span class="badge badge-script">script</span></td>
+  <td style="padding:8px 12px;border:1px solid #30363d;">classified_banks.json + prices</td>
+  <td style="padding:8px 12px;border:1px solid #30363d;">phase2_results.json</td>
+  <td style="padding:8px 12px;border:1px solid #30363d;color:#3fb950;">D1-D5 全部百分位</td>
+</tr>
+<tr style="background:#0d1117;">
+  <td style="padding:8px 12px;border:1px solid #30363d;">compute_scores.py triggers</td>
+  <td style="padding:8px 12px;border:1px solid #30363d;text-align:center;"><span class="badge badge-script">script</span></td>
+  <td style="padding:8px 12px;border:1px solid #30363d;">phase2_results.json</td>
+  <td style="padding:8px 12px;border:1px solid #30363d;">phase3_triggers.json</td>
+  <td style="padding:8px 12px;border:1px solid #30363d;">边缘分数+flag 触发</td>
+</tr>
+<tr style="background:#0d1117;">
+  <td style="padding:8px 12px;border:1px solid #30363d;">compute_scores.py finalize</td>
+  <td style="padding:8px 12px;border:1px solid #30363d;text-align:center;"><span class="badge badge-script">script</span></td>
+  <td style="padding:8px 12px;border:1px solid #30363d;">phase2 + phase3 results</td>
+  <td style="padding:8px 12px;border:1px solid #30363d;">final_output.json</td>
+  <td style="padding:8px 12px;border:1px solid #30363d;">Top 15 按分排序</td>
+</tr>
+</tbody>
+</table>
+</div>
+
+<!-- ============================================================ -->
+<!-- KEY PROBLEMS -->
+<!-- ============================================================ -->
+<hr class="divider" style="margin: 32px 0 16px;">
+
+<h2 style="text-align:center;font-size:16px;color:#f0f6fc;margin-bottom:12px;">关键架构问题</h2>
+
+<div style="max-width:1300px;margin:0 auto;display:flex;gap:12px;flex-wrap:wrap;">
+
+<div class="warn-box" style="flex:1;min-width:300px;">
+  <strong>1. 双评分管线没有数据对接</strong><br>
+  AI 管线 (L0→L1→L2→L3) 和 compute_scores.py 各自独立产出 final_output.json。
+  AI 读的卡片分数 (D2=绝对值) 和 compute_scores 的排名分数 (D2=百分位) 互不可见。
+  最终的 final_output.json 到底用哪边的分数？目前没有明确仲裁。
+</div>
+
+<div class="warn-box" style="flex:1;min-width:300px;">
+  <strong>2. Flag ID 追溯链断裂</strong><br>
+  scoring_rules.md 定义了 F1-F11 flags → quant_spawn 输出 curiosity 字符串 (无 flag ID) → qual_spawn 要求引用 "quant:F4" 格式 → flag ID 不存在于 quant 输出中。qual 层无法结构化关联上游标记。
+</div>
+
+<div class="warn-box" style="flex:1;min-width:300px;">
+  <strong>3. 卡片标注不诚实</strong><br>
+  卡片 "Dimension Scores" 表头写 "Peer-Group Relative"，但 D2 子项 (PCR, LPR) 实际用的是绝对线性映射，不是同行百分位。AI 在 L1/L2 读卡时基于错误标签做判断。
+</div>
+
+<div class="warn-box" style="flex:1;min-width:300px;">
+  <strong>4. 银行分组不同步</strong><br>
+  bank_constants.py、compute_scores.py、bank_list.md、qual_spawn_prompt.md 各有一份银行分组/类型覆盖。SH601825 (沪农商行) 在一处标 rural_commercial 另一处标 city_commercial，SH601077 (渝农商行) 分组存疑。
+</div>
+
+</div>
+
+</body>
+</html>

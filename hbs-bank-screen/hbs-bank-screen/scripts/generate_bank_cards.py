@@ -92,6 +92,12 @@ def classify_banks(banks, profit_index):
 
 
 def _classify_single(code, profit):
+    # TYPE_OVERRIDES take precedence — they encode expert domain knowledge
+    # that simple interest-income ratios cannot capture for Chinese banks
+    override = get_type_override(code)
+    if override:
+        return override, "high", "Using pre-defined type override (expert classification)"
+
     net_int = profit.get("NET_INTEREST_INCOME")
     total_op = profit.get("TOTAL_OPERATE_INCOME")
     commission = profit.get("COMMISSION_INCOME")
@@ -116,11 +122,8 @@ def _classify_single(code, profit):
         else:
             return "trading_ib", "medium", f"High fee ratio {fee_ratio:.1%} suggests trading/IB"
 
-    # Last resort
-    override = get_type_override(code)
-    if override:
-        return override, "low", "Using pre-defined type override"
-    return "traditional_commercial", "low", "Default (all methods failed)"
+    # Last resort — all algorithmic methods failed
+    return "traditional_commercial", "low", "Default (all classification methods failed)"
 
 
 # ============================================================
@@ -365,13 +368,13 @@ def compute_flags(bank, stats, prices_dict, dividend_index):
     if nim is not None and nim < 1.0:
         flags.append({"id": "F4", "level": "WATCH", "description": f"NIM critically low: {nim:.2f}%"})
 
-    # F5: Leverage-inflated ROE
+    # F5: Leverage-inflated ROE (annualize Q1 ROE and ROA for flag thresholds)
     if roe is not None and stats.get("ROEJQ"):
         roe_p75 = stats["ROEJQ"]["p75"]
         net_profit = bank.get("PARENTNETPROFIT")
         total_assets = bank.get("TOTAL_ASSETS_PK")
         if net_profit and total_assets and total_assets > 0:
-            roa = net_profit / total_assets
+            roa = (net_profit * 4) / total_assets  # annualize Q1 net profit
             if roe > roe_p75 and roa < 0.003:
                 flags.append({"id": "F5", "level": "WATCH",
                               "description": "High ROE but low ROA — leverage-inflated returns"})
@@ -387,9 +390,9 @@ def compute_flags(bank, stats, prices_dict, dividend_index):
     if cost_income is not None and cost_income > 60:
         flags.append({"id": "F8", "level": "INFO", "description": f"Cost-income ratio elevated: {cost_income:.1f}%"})
 
-    # F9: Profitability concern
-    if roe is not None and roe < 5:
-        flags.append({"id": "F9", "level": "INFO", "description": f"Profitability concern: ROE {roe:.2f}% < 5%"})
+    # F9: Profitability concern (annualize Q1 ROE: ×4)
+    if roe is not None and roe * 4 < 5:
+        flags.append({"id": "F9", "level": "INFO", "description": f"Profitability concern: annualized ROE {roe*4:.1f}% < 5%"})
 
     # F10: Thin capital buffer
     if car is not None and car < 12:

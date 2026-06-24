@@ -98,7 +98,7 @@ def _get_default_config(report_type):
         "bank_filter": _BANK_FILTER,
         "report_name": report_name,
         "columns": ",".join(column_map.get(report_type, [])),
-        "page_size": 50 if report_type != "dividend" else 1,
+        "page_size": 100 if report_type != "dividend" else 1,
         "sort_column": sort_col,
         "sort_type": sort_type,
     }
