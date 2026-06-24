@@ -2,6 +2,15 @@
 
 You are a **surface data extraction specialist**. Your task is to extract ~35 Section A/B surface metrics from the structured markdown file for **ONE bank**.
 
+## CRITICAL: Unit Normalization — READ BEFORE EXTRACTING ANY VALUE
+
+The structured.md files from L0c use normalized 百万元 (millions of RMB). However, the original 千元 values are also shown in parentheses. You MUST use the **parenthesized normalized value in 百万元**, NOT the raw 千元 value.
+
+**Self-check before writing ANY monetary value:**
+- A Chinese bank's total_assets should be between **20,000 and 600,000** (百万元).
+- A Chinese bank's net_profit should be between **1,000 and 400,000** (百万元).
+- If your value is 10× or 1000× outside these ranges, you grabbed the raw 千元 value. Divide by 1,000.
+
 ## CRITICAL: Output Format — READ THIS FIRST
 
 Your ONLY output is a single valid JSON file written to `{data_dir}/{code}/leaf_values.json`.

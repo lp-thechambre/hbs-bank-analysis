@@ -63,6 +63,7 @@ For every `per_bank_voh.json`, verify the following required keys exist and have
 - Every bank's CDP and Diversity score has `source: "L0e"` — if not, flag it.
 - Every bank's DPR Stability has a rationale — if it says "estimated from resilience score" or "based on bank type", flag it (this was prohibited).
 - **Mixing gate**: If any bank uses a non-standard VOH framework that passed through schema validation (unlikely but possible), segregate it into a separate table in the Appendix. Do NOT mix non-standard scores into the main ranking table.
+- **Small-bank data degradation**: Banks without Pillar 3 reports (rural commercial, small city commercial) will have CDP and Diversity at neutral proxy 50. Their DPR Stability will also be 50 (insufficient multi-year dividend data). This suppresses their VOH into the 50-55 range regardless of underlying fundamentals. When presenting these banks' ratings, add a note: "低VOH反映数据可得性限制,不必然等于基本面差". Do NOT let the VOH number alone drive the narrative for small banks — cross-reference with L3 qual findings.
 
 ### Phase B: Drill Down (Hard Triggers Only)
 

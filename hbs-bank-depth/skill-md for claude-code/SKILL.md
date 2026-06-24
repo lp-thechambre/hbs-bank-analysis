@@ -50,7 +50,8 @@ The pipeline has 8 phases:
 
 ## Spawn Isolation Rules
 
-- L0c/L1/L3/L5a: 1 bank per Agent — agents must NOT see other banks' data
+- **L0c/L1/L3/L5a: 1 bank per Agent — agents must NOT see other banks' data**
+- **ABSOLUTE PROHIBITION: Multi-bank batching.** One Agent = one bank. Never assign 2+ banks to a single L0c/L0d/L1/L3/L5a Agent spawn, regardless of bank size. Small banks with fewer PDF pages are NOT an excuse to batch — their annual reports still contain 200+ pages of financial statements, notes, MD&A, and governance sections that require full extraction. Violating this rule causes context-budget starvation: the last bank in the batch gets shallow extraction (missing MD&A, governance, notes) because the agent runs out of context. If you need to process N banks, spawn N separate Agents.
 - L2/L5b: 1 global Agent — sees all banks' aggregated data
 - No Agent-within-Agent: main session dispatches all Agents directly
 
@@ -67,3 +68,22 @@ The pipeline has 8 phases:
 ## Degradation
 
 Failures are non-fatal per bank. On failure, ask the user. All logged to `pipeline_errors.log`.
+
+## Re-Run Protocol
+
+When re-running L0c/L0d/L1/L3/L5a for a specific bank, delete the target output file BEFORE spawning the agent. The Agent tool's Write requires a prior Read of existing files, which wastes context and can cause timeout on large JSON files.
+
+```bash
+# Before re-spawning, clean old outputs for the bank:
+rm data/{code}/leaf_values.json data/{code}/per_bank_scan.json data/{code}/per_bank_qual.json data/{code}/per_bank_voh.json
+```
+
+## Pre-Spawn Validation
+
+Before spawning ANY L0c/L0d/L1/L3/L5a agent, verify the prompt assigns EXACTLY ONE bank. Run this check:
+
+```bash
+echo "$PROMPT" | grep -oP 'SH6\d{5}|SZ0\d{5}' | sort -u | wc -l
+```
+
+If the count is > 1, the prompt violates the 1-bank-per-agent rule. Refuse to spawn and fix the prompt.
